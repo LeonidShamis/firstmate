@@ -104,7 +104,7 @@ SH
 }
 
 add_tasks_axi() {
-  local fakebin=$1 version=$2 archive_body=${3:-yes} multi_id=${4:-yes} archive_line mv_usage
+  local fakebin=$1 version=$2 archive_body=${3:-yes} multi_id=${4:-yes} beads=${5:-yes} archive_line mv_usage
   archive_line=""
   [ "$archive_body" = yes ] && archive_line='  --archive-body'
   mv_usage='usage: tasks-axi mv <id> [<id>...] --to <path-or-dir>'
@@ -125,9 +125,22 @@ if [ "\${1:-}" = mv ] && [ "\${2:-}" = --help ]; then
   printf '%s\n' '$mv_usage'
   exit 0
 fi
+if [ "\${TASKS_AXI_BACKEND:-}" = beads ] && [ '$beads' != yes ]; then
+  printf '%s\n' 'error: Unsupported backend "beads" - P1 ships the markdown backend only' >&2
+  exit 1
+fi
 exit 0
 SH
   chmod +x "$fakebin/tasks-axi"
+}
+
+add_bd() {
+  local fakebin=$1
+  cat > "$fakebin/bd" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  chmod +x "$fakebin/bd"
 }
 
 add_real_jq() {
@@ -449,6 +462,72 @@ tasks-axi at floor without archive-body reports an upgrade^0.2.4:noarchive^missi
 tasks-axi at floor without multi-id reports an upgrade^0.2.4:nomulti^missing
 ROWS
   pass "bootstrap enforces tasks-axi minimum version"
+}
+
+# Beads backlog storage (selected by the home's .tasks.toml) additionally gates
+# on the bd CLI, a beads-capable tasks-axi build, and an initialized data/.beads
+# database; markdown storage keeps all three checks inert.
+test_beads_backlog_storage() {
+  local case_dir fakebin out
+
+  # bd missing is reported with its install command; the database check stays
+  # quiet because it is gated on bd being present.
+  case_dir="$TMP_ROOT/beads-1"
+  mkdir -p "$case_dir/home"
+  printf 'backend = "beads"\n' > "$case_dir/home/.tasks.toml"
+  fakebin=$(make_fake_toolchain "$case_dir")
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  printf '%s\n' "$out" | grep -Fx 'MISSING: bd (install: npm install -g @beads/bd)' >/dev/null \
+    || fail "beads storage without bd: missing bd diagnostic (got: $out)"
+  printf '%s\n' "$out" | grep -F 'beads-database' >/dev/null \
+    && fail "beads storage without bd: database check should stay quiet (got: $out)"
+
+  # A tasks-axi build that rejects the beads backend gets manual instructions.
+  case_dir="$TMP_ROOT/beads-2"
+  mkdir -p "$case_dir/home/data/.beads"
+  printf 'backend = "beads"\n' > "$case_dir/home/.tasks.toml"
+  fakebin=$(make_fake_toolchain "$case_dir")
+  add_tasks_axi "$fakebin" 0.2.4 yes yes no
+  add_bd "$fakebin"
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  printf '%s\n' "$out" | grep -F 'MISSING_MANUAL: tasks-axi-beads' >/dev/null \
+    || fail "beads-less tasks-axi: missing manual diagnostic (got: $out)"
+
+  # bd present but no database yet points at the captain-approved bd init.
+  case_dir="$TMP_ROOT/beads-3"
+  mkdir -p "$case_dir/home"
+  printf 'backend = "beads"\n' > "$case_dir/home/.tasks.toml"
+  fakebin=$(make_fake_toolchain "$case_dir")
+  add_bd "$fakebin"
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  printf '%s\n' "$out" | grep -F 'MISSING_MANUAL: beads-database' >/dev/null \
+    || fail "beads storage without database: missing init diagnostic (got: $out)"
+  printf '%s\n' "$out" | grep -F 'bd init' >/dev/null \
+    || fail "beads database diagnostic must name bd init (got: $out)"
+
+  # A fully provisioned beads home is silent.
+  case_dir="$TMP_ROOT/beads-4"
+  mkdir -p "$case_dir/home/data/.beads"
+  printf 'backend = "beads"\n' > "$case_dir/home/.tasks.toml"
+  fakebin=$(make_fake_toolchain "$case_dir")
+  add_bd "$fakebin"
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  [ -z "$out" ] || fail "provisioned beads home: expected silence, got: $out"
+
+  # Markdown storage never gates on bd.
+  case_dir="$TMP_ROOT/beads-5"
+  mkdir -p "$case_dir/home"
+  printf 'backend = "markdown"\n' > "$case_dir/home/.tasks.toml"
+  fakebin=$(make_fake_toolchain "$case_dir")
+  out=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$case_dir/home" \
+    FM_FAKE_TREEHOUSE_LEASE_HELP=1 "$ROOT/bin/fm-bootstrap.sh")
+  [ -z "$out" ] || fail "markdown storage: expected silence, got: $out"
+
+  pass "bootstrap gates beads backlog storage on bd, a beads-capable tasks-axi, and an initialized database"
 }
 
 # These rows exercise the real bootstrap check with a fake quota-axi answering
@@ -1153,6 +1232,7 @@ test_no_mistakes_min_version
 test_gh_axi_min_version
 test_lavish_axi_min_version
 test_tasks_axi_min_version
+test_beads_backlog_storage
 test_quota_axi_min_version
 test_git_is_required_with_supported_install_instruction
 test_orca_backend_gates_orca_tool_only_when_selected

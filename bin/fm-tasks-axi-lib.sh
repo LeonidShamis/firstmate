@@ -99,6 +99,32 @@ fm_tasks_axi_mv_has_multi_id() {
   printf '%s\n' "$output" | grep -F -- '[<id>...]' >/dev/null
 }
 
+fm_tasks_axi_storage_backend() {
+  # The tasks-axi STORAGE backend (markdown or beads) selected by the home's
+  # .tasks.toml. Distinct from config/backlog-backend, which only chooses
+  # between the tasks-axi CLI and manual hand-editing; with beads storage the
+  # markdown file at data/backlog.md is a read-only mirror tasks-axi rewrites.
+  local home=$1 value
+  value=$(sed -n 's/^backend[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "$home/.tasks.toml" 2>/dev/null | head -1)
+  [ -n "$value" ] || value=markdown
+  printf '%s\n' "$value"
+}
+
+fm_tasks_axi_has_beads_backend() {
+  # True when the installed tasks-axi build knows the beads backend. The probe
+  # needs neither bd nor a beads database: only the legacy "Unsupported
+  # backend" rejection marks a build as beads-less; a beads-capable build
+  # fails differently (missing bd, missing database) or succeeds.
+  local probe_dir output
+  command -v tasks-axi >/dev/null 2>&1 || return 1
+  probe_dir=$(mktemp -d 2>/dev/null) || return 1
+  output=$(cd "$probe_dir" && env TASKS_AXI_BACKEND=beads \
+    TASKS_AXI_FILE="$probe_dir/backlog.md" tasks-axi list 2>&1)
+  rm -rf "$probe_dir"
+  ! printf '%s\n' "$output" | grep -F 'Unsupported backend' >/dev/null
+}
+
 fm_backlog_backend_value() {
   local config_dir=$1 backend_file value
   backend_file="$config_dir/backlog-backend"

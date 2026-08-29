@@ -595,7 +595,7 @@ remove_interrupted_source_duplicates() { # <outbox> <keys...>
       backlog_key_section "$outbox" "$key" >/dev/null 2>&1 || continue
       if backlog_key_section "$MAIN_BACKLOG" "$key" >/dev/null 2>&1; then
         remaining=$((remaining + 1))
-        if tasks-axi rm "$key" --file "$MAIN_BACKLOG" >/dev/null 2>&1; then
+        if env TASKS_AXI_BACKEND=markdown tasks-axi rm "$key" --file "$MAIN_BACKLOG" >/dev/null 2>&1; then
           progress=$((progress + 1))
         fi
       fi
@@ -628,6 +628,10 @@ remote_handoff() { # <secondmate-id> <keys...>
     echo "error: a compatible tasks-axi with atomic multi-ID mv support is required to stage remote handoffs; run bin/fm-bootstrap.sh for the required version" >&2
     return 1
   }
+  if [ "$(fm_tasks_axi_storage_backend "$FM_HOME")" = beads ]; then
+    echo "error: secondmate backlog handoff requires markdown backlog storage; this home's .tasks.toml selects beads (data/backlog.md is a mirror). Keep handoff homes on backend = \"markdown\"." >&2
+    return 1
+  fi
   to_move=()
   already=()
   missing=()
@@ -679,7 +683,9 @@ remote_handoff() { # <secondmate-id> <keys...>
   fi
   seed_backlog_scaffold "$outbox"
   if [ "${#to_move[@]}" -gt 0 ]; then
-    if ! mv_out=$(tasks-axi mv "${to_move[@]}" --file "$MAIN_BACKLOG" --to "$outbox" 2>&1); then
+    # Handoff operates on explicit markdown files; pin the backend so an
+    # ambient .tasks.toml in the caller's cwd can never reroute the move.
+    if ! mv_out=$(env TASKS_AXI_BACKEND=markdown tasks-axi mv "${to_move[@]}" --file "$MAIN_BACKLOG" --to "$outbox" 2>&1); then
       [ -z "$mv_out" ] || printf '%s\n' "$mv_out" >&2
       echo "error: atomic outbox staging failed; nothing new was handed off" >&2
       return 1
@@ -844,6 +850,15 @@ if ! fm_tasks_axi_compatible; then
   exit 1
 fi
 
+# Handoff moves item blocks between markdown files, so it requires markdown
+# backlog storage: with beads storage this home's backlog.md is a regenerated
+# mirror, and moving items out of the mirror would silently diverge from the
+# beads database.
+if [ "$(fm_tasks_axi_storage_backend "$FM_HOME")" = beads ]; then
+  echo "error: secondmate backlog handoff requires markdown backlog storage; this home's .tasks.toml selects beads (data/backlog.md is a mirror). Keep handoff homes on backend = \"markdown\"." >&2
+  exit 1
+fi
+
 WAKE_PENDING_MARKER="$STATE/.backlog-handoff-$ID.wake-pending"
 if [ -e "$WAKE_PENDING_MARKER" ] || [ -L "$WAKE_PENDING_MARKER" ]; then
   case "$(cat "$WAKE_PENDING_MARKER" 2>/dev/null || true)" in
@@ -881,7 +896,9 @@ fi
 # together and, on any failure, neither backlog's content changes - the only
 # cleanup is a scaffold we just created. tasks-axi writes both its success and
 # error output to stdout, so capture it and surface it only on failure.
-if ! MV_OUT=$(tasks-axi mv "${TO_MOVE[@]}" --file "$MAIN_BACKLOG" --to "$SUB_BACKLOG" 2>&1); then
+# Pinned to the markdown backend: handoff moves blocks between explicit files,
+# and an ambient .tasks.toml in the caller's cwd must never reroute the move.
+if ! MV_OUT=$(env TASKS_AXI_BACKEND=markdown tasks-axi mv "${TO_MOVE[@]}" --file "$MAIN_BACKLOG" --to "$SUB_BACKLOG" 2>&1); then
   if [ "$SUB_CREATED" -eq 1 ]; then
     rm -f "$SUB_BACKLOG"
   fi

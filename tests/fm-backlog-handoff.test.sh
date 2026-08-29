@@ -58,6 +58,33 @@ doorbell_count() { # <backend-log>
 
 # A live local receiver gets the routed-work instruction through its durable
 # inbox record while the endpoint receives only the constant doorbell.
+# With beads backlog storage the markdown file is a regenerated mirror, so a
+# block move out of it would silently diverge from the beads database; handoff
+# must refuse before moving anything.
+test_handoff_refuses_beads_backlog_storage() {
+  local home="$TMP_ROOT/beads-main" sub="$TMP_ROOT/beads-sub" out rc=0
+  setup_homes "$home" "$sub"
+  mkdir -p "$sub/data"
+  cat > "$home/data/backlog.md" <<'EOF'
+## Queued
+- [ ] beads-item - routed nowhere (repo: alpha)
+
+## Done
+EOF
+  printf '## Queued\n\n## Done\n' > "$sub/data/backlog.md"
+  printf 'backend = "beads"\n' > "$home/.tasks.toml"
+  out=$(cd "$home" && FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    "$ROOT/bin/fm-backlog-handoff.sh" design beads-item 2>&1) && rc=0 || rc=$?
+  [ "$rc" -ne 0 ] || fail "handoff must refuse beads backlog storage (got: $out)"
+  assert_contains "$out" 'requires markdown backlog storage' \
+    "beads refusal must name the storage requirement (got: $out)"
+  grep -F 'beads-item' "$home/data/backlog.md" >/dev/null \
+    || fail "refused handoff must leave the source backlog untouched"
+  ! grep -F 'beads-item' "$sub/data/backlog.md" >/dev/null \
+    || fail "refused handoff must not write the destination backlog"
+  pass "handoff refuses beads backlog storage before moving anything"
+}
+
 test_handoff_wakes_live_local_receiver() {
   local home="$TMP_ROOT/live-wake-main" sub="$TMP_ROOT/live-wake-sub" fakebin out wake_count
   setup_homes "$home" "$sub"
@@ -762,7 +789,7 @@ assert_block_equals() {
 seed_public_commitment() {
   local home=$1 obligation=$2 work_home=$3 work_id=$4
   printf 'FMX_PAIRING_TOKEN=test-token\n' > "$home/.env"
-  cp "$ROOT/.tasks.toml" "$home/.tasks.toml"
+  fm_test_markdown_tasks_toml "$home"
   jq -n '{request_id:"req-handoff", platform:"x",
           context_binding:{version:"ctx1", value:"ctx1_req-handoff"},
           public_safe_summary:"looking into the sign-in redirect",
@@ -1356,5 +1383,6 @@ test_registry_home_with_pre_home_parentheses
 test_registry_home_missing_field_fails_cleanly
 test_handoff_warns_when_a_moved_item_still_owes_a_public_reply
 test_handoff_is_silent_about_public_commitments_without_the_relay
+test_handoff_refuses_beads_backlog_storage
 
 echo "ALL TESTS PASSED"

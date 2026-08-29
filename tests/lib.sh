@@ -304,3 +304,16 @@ assert_absent() {
 assert_present() {
   [ -e "$1" ] || fail "$2"
 }
+
+# fm_test_markdown_tasks_toml <home>: seed <home>/.tasks.toml from the tracked
+# config, pinned to markdown storage. The markdown-flow suites (handoff,
+# captain-hold, bearings board, public-followup) exercise markdown-specific
+# machinery with the real tasks-axi CLI, so they must not follow the tracked
+# default when it selects beads storage.
+fm_test_markdown_tasks_toml() {
+  local home=$1 tmp
+  tmp=$(mktemp)
+  sed 's/^backend[[:space:]]*=.*/backend = "markdown"/' \
+    "$ROOT/.tasks.toml" > "$tmp"
+  mv "$tmp" "$home/.tasks.toml"
+}

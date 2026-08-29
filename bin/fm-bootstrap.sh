@@ -838,6 +838,7 @@ install_cmd() {
     no-mistakes) echo "curl -fsSL https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | sh" ;;
     gh-axi|chrome-devtools-axi|lavish-axi) echo "npm install -g $1 && $1 setup hooks" ;;
     tasks-axi|quota-axi) echo "npm install -g $1" ;;
+    bd) echo "npm install -g @beads/bd" ;;
     *) return 1 ;;
   esac
 }
@@ -1238,6 +1239,21 @@ detect_local_tools() {
   if command -v tasks-axi >/dev/null 2>&1 && ! fm_tasks_axi_compatible; then
     echo "MISSING: tasks-axi (install: $(install_cmd tasks-axi))"
   fi
+  # Beads backlog storage (selected by the home's .tasks.toml) additionally
+  # needs the bd CLI, a tasks-axi build that knows the beads backend, and an
+  # initialized database under data/. Database creation writes captain-private
+  # state, so it is reported for consent rather than run here.
+  if [ "$(fm_tasks_axi_storage_backend "$FM_HOME")" = beads ]; then
+    if ! command -v bd >/dev/null 2>&1; then
+      echo "MISSING: bd (install: $(install_cmd bd))"
+    fi
+    if command -v tasks-axi >/dev/null 2>&1 && ! fm_tasks_axi_has_beads_backend; then
+      echo "MISSING_MANUAL: tasks-axi-beads (instructions: install a tasks-axi build with the beads backend - in your tasks-axi checkout run: pnpm install && pnpm build && npm link)"
+    fi
+    if command -v bd >/dev/null 2>&1 && [ ! -d "$DATA/.beads" ]; then
+      echo "MISSING_MANUAL: beads-database (instructions: initialize the backlog database with: cd $DATA && bd init)"
+    fi
+  fi
 }
 
 detect_local_config() {
@@ -1269,7 +1285,11 @@ detect_local_config() {
   crew_dispatch_validate
   if [ "${FM_BOOTSTRAP_VERBOSE_FACTS:-0}" = 1 ] \
     && ! fm_backlog_backend_manual "$CONFIG" && fm_tasks_axi_compatible; then
-    echo "BOOTSTRAP_INFO: tasks-axi available"
+    if [ "$(fm_tasks_axi_storage_backend "$FM_HOME")" = beads ]; then
+      echo "BOOTSTRAP_INFO: tasks-axi available (beads storage)"
+    else
+      echo "BOOTSTRAP_INFO: tasks-axi available"
+    fi
   fi
 }
 

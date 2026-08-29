@@ -79,7 +79,9 @@ remove_dead_stale_lock() { # <lock-path>
 }
 
 run_move() { # <keys...>
-  tasks-axi mv "$@" --file "$DELIVERED" --to "$DEST"
+  # Pinned to the markdown backend: receive moves blocks between explicit
+  # files, and an ambient .tasks.toml must never reroute the move.
+  env TASKS_AXI_BACKEND=markdown tasks-axi mv "$@" --file "$DELIVERED" --to "$DEST"
 }
 
 [ "$#" -eq 4 ] || usage
@@ -101,6 +103,8 @@ case "$REL" in *'//'*) die "delivered outbox path is malformed" ;; esac
 [ -f "$FM_HOME/.fm-secondmate-home" ] && [ ! -L "$FM_HOME/.fm-secondmate-home" ] \
   || die "FM_HOME is not a seeded secondmate home"
 [ -f "$FM_HOME/AGENTS.md" ] && [ -d "$FM_HOME/bin" ] || die "FM_HOME is not a Firstmate home"
+[ "$(fm_tasks_axi_storage_backend "$FM_HOME")" != beads ] \
+  || die "backlog receive requires markdown backlog storage; this home's .tasks.toml selects beads (data/backlog.md is a mirror)"
 HOME_REAL=$(CDPATH='' cd -- "$FM_HOME" 2>/dev/null && pwd -P) || die "FM_HOME cannot be resolved"
 PARENT=$(dirname "$FM_HOME/$REL")
 PARENT_REAL=$(CDPATH='' cd -- "$PARENT" 2>/dev/null && pwd -P) || die "delivered outbox parent is unavailable"

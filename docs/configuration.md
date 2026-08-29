@@ -88,17 +88,23 @@ Both choices are local to each Firstmate home and are not part of secondmate inh
 
 ## Backlog backend (.tasks.toml / config/backlog-backend)
 
-The tracked `.tasks.toml` pins the default `tasks-axi` markdown backend to `data/backlog.md`, with `done_keep = 10` and an archive at `data/done-archive.md`.
-When the default backend is selected and compatible `tasks-axi` is on `PATH`, firstmate uses its verbs for routine backlog mutations.
+The tracked `.tasks.toml` selects tasks-axi's **beads** storage backend: the backlog lives in a [beads](https://github.com/gastownhall/beads) database at `data/.beads` (driven through the `bd` CLI), and `data/backlog.md` is a read-only canonical-markdown mirror tasks-axi rewrites after every mutation.
+The mirror keeps every direct reader of `data/backlog.md` (fleet snapshot, session-start fallback listing, inbox view, voice records) working unchanged, while `bd` gains the full graph, history, and agent-native views over the same tasks.
+Mutate the backlog through tasks-axi verbs (or `bd`, then `tasks-axi render` to refresh the mirror); hand-edits to the mirror are overwritten.
+Beads storage additionally requires the `bd` CLI and a beads-capable tasks-axi build; bootstrap reports each missing piece, and the database itself is created with a captain-approved `bd init` in `data/`.
+Editing `.tasks.toml` back to `backend = "markdown"` restores the classic hand-editable markdown backlog with identical firstmate behavior.
+When the tasks-axi path is selected and compatible `tasks-axi` is on `PATH`, firstmate uses its verbs for routine backlog mutations.
 Secondmate handoffs bypass that routine-backend choice: `fm-backlog-handoff.sh` keeps only its own fleet-level validation, delegates the item move to `tasks-axi mv`, and requires a verified receiver wake after a new move becomes durable.
 It moves in-scope `## Queued` items only and refuses `## In flight` and historical `## Done` records, which stay with their home for pruning or archiving.
 Handoff item bodies must use at least two leading spaces, and the helper refuses a selected item with a single-space or tab-indented continuation rather than risk orphaning it.
 Because bootstrap requires `tasks-axi` on `PATH` on every profile, that delegation works fleet-wide, and the `config/backlog-backend=manual` knob governs firstmate's own hand-editing of its backlog, not this validated helper.
+Secondmate backlog handoff currently requires the markdown storage backend: on beads storage the multi-ID `tasks-axi mv` refuses with a structured unsupported error rather than silently splitting a move across two stores, so keep `.tasks.toml` on `backend = "markdown"` in homes that hand backlog to secondmates.
 Compatible means the installed build passes the shared version and feature probe owned by [`bin/fm-tasks-axi-lib.sh`](../bin/fm-tasks-axi-lib.sh), including the atomic multi-ID move required by handoff delegation.
 Bootstrap requires compatible `tasks-axi` on every profile; see "Toolchain" below for missing-tool reporting and silent default-backend behavior.
 Set the local, gitignored `config/backlog-backend` file to `manual` to force manual backlog editing and suppress the verbose `BOOTSTRAP_INFO: tasks-axi available` fact, not missing-tool reporting.
 Absent or `tasks-axi` selects the default tasks-axi backend.
 The file format is unchanged in both modes; tasks-axi and manual edits produce the same `## In flight`, `## Queued`, and `## Done` sections.
+`manual` is only meaningful with markdown storage: on beads storage the markdown file is a regenerated mirror, so hand-edits are overwritten and routine mutations must flow through tasks-axi.
 
 ## Runtime backend (config/backend / FM_BACKEND)
 
