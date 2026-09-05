@@ -17,6 +17,11 @@
 # back to manual mutation when the tool is not compatible.
 # fm_tasks_axi_backend mirrors tasks-axi's environment, project, home-config,
 # and default backend precedence for callers that need backend-specific flags.
+# fm_tasks_axi_backend_from_toml reports the storage a single .tasks.toml
+# DECLARES, ignoring TASKS_AXI_BACKEND and the user-level config. Safety gates
+# that must refuse on a home's declared storage read it directly rather than
+# through fm_tasks_axi_backend, because an ambient (or empty) TASKS_AXI_BACKEND
+# must not be able to answer what a home's own file selects.
 # fm_tasks_axi_has_beads_backend reports whether the INSTALLED tasks-axi build
 # knows the beads storage backend, probing it without needing bd or a database.
 #

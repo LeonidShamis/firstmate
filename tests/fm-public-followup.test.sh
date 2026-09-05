@@ -129,11 +129,13 @@ EOF
   printf '%s\n' "$home"
 }
 
-# bin/fm-home-seed.sh clones this repository, so a seeded secondmate home
-# inherits the tracked backlog storage. Every case in this suite drives markdown
-# backlogs, so a seeded home is pinned exactly as make_home pins its own
-# (fm_test_markdown_tasks_toml, tests/lib.sh).
-pin_seeded_home() {  # <seeded-home>
+# Every case in this suite drives markdown backlogs, so each child home is
+# pinned exactly as make_home pins its own (fm_test_markdown_tasks_toml,
+# tests/lib.sh). A home seeded by bin/fm-home-seed.sh needs it because seeding
+# clones this repository and so inherits the tracked backlog storage; a
+# hand-built child home needs it because it carries no .tasks.toml at all and
+# would otherwise fall through to the host's user-level tasks-axi config.
+pin_child_home() {  # <child-home>
   fm_test_markdown_tasks_toml "$1"
 }
 
@@ -803,7 +805,7 @@ test_secondmate_teardown_resolves_parent_from_durable_record_when_env_lost() {
     FM_HOME="$parent" "$ROOT/bin/fm-home-seed.sh" mate "$child" --no-projects >/dev/null \
     || fail "real secondmate seeding failed"
   child=$(cd "$child" && pwd -P)
-  pin_seeded_home "$child"
+  pin_child_home "$child"
   parent_resolved=$(cd "$parent" && pwd -P)
   make_fake_curl "$child" >/dev/null
   fm_fake_exit0 "$child/fakebin" tmux treehouse no-mistakes gh gh-axi
@@ -841,7 +843,7 @@ test_secondmate_teardown_durable_record_missing_parent_registration_still_refuse
     FM_HOME="$parent" "$ROOT/bin/fm-home-seed.sh" mate "$child" --no-projects >/dev/null \
     || fail "real secondmate seeding failed"
   child=$(cd "$child" && pwd -P)
-  pin_seeded_home "$child"
+  pin_child_home "$child"
   parent_resolved=$(cd "$parent" && pwd -P)
   make_fake_curl "$child" >/dev/null
   fm_fake_exit0 "$child/fakebin" tmux treehouse no-mistakes gh gh-axi
@@ -873,7 +875,7 @@ test_secondmate_teardown_durable_record_with_unknown_field_succeeds() {
     FM_HOME="$parent" "$ROOT/bin/fm-home-seed.sh" mate "$child" --no-projects >/dev/null \
     || fail "real secondmate seeding failed"
   child=$(cd "$child" && pwd -P)
-  pin_seeded_home "$child"
+  pin_child_home "$child"
   parent_resolved=$(cd "$parent" && pwd -P)
   make_fake_curl "$child" >/dev/null
   fm_fake_exit0 "$child/fakebin" tmux treehouse no-mistakes gh gh-axi
@@ -909,7 +911,7 @@ test_secondmate_teardown_rejects_conflicting_live_and_durable_parent_bindings() 
     FM_HOME="$durable_parent" "$ROOT/bin/fm-home-seed.sh" mate "$child" --no-projects >/dev/null \
     || fail "real secondmate seeding failed"
   child=$(cd "$child" && pwd -P)
-  pin_seeded_home "$child"
+  pin_child_home "$child"
   parent_resolved=$(cd "$durable_parent" && pwd -P)
   make_fake_curl "$child" >/dev/null
   fm_fake_exit0 "$child/fakebin" tmux treehouse no-mistakes gh gh-axi
@@ -943,7 +945,7 @@ test_secondmate_teardown_rejects_unsafe_durable_parent_records() {
       FM_HOME="$parent" "$ROOT/bin/fm-home-seed.sh" mate "$child" --no-projects >/dev/null \
       || fail "real secondmate seeding failed for $case_name"
     child=$(cd "$child" && pwd -P)
-    pin_seeded_home "$child"
+    pin_child_home "$child"
     make_fake_curl "$child" >/dev/null
     fm_fake_exit0 "$child/fakebin" tmux treehouse no-mistakes gh gh-axi
     fm_write_meta "$child/state/work-child.meta" \
@@ -1005,7 +1007,7 @@ test_secondmate_teardown_rejects_nul_bearing_durable_parent_record() {
     FM_HOME="$parent" "$ROOT/bin/fm-home-seed.sh" mate "$child" --no-projects >/dev/null \
     || fail "real secondmate seeding failed"
   child=$(cd "$child" && pwd -P)
-  pin_seeded_home "$child"
+  pin_child_home "$child"
   parent_resolved=$(cd "$parent" && pwd -P)
   make_fake_curl "$child" >/dev/null
   fm_fake_exit0 "$child/fakebin" tmux treehouse no-mistakes gh gh-axi
@@ -1438,7 +1440,7 @@ test_dropped_baton_now_surfaces_open_loop() {
   FM_SECONDMATE_CHARTER='Baton repro charter.' FM_HOME="$parent" \
     "$ROOT/bin/fm-home-seed.sh" mate "$child" --no-projects >/dev/null || fail "seed failed"
   child=$(cd "$child" && pwd -P)
-  pin_seeded_home "$child"
+  pin_child_home "$child"
   make_fake_curl "$child" >/dev/null
   fm_fake_exit0 "$child/fakebin" tmux treehouse no-mistakes gh gh-axi
   log="$TMP_ROOT/curl.log"; : > "$log"
@@ -1489,7 +1491,7 @@ test_control_registered_followon_is_guarded() {
   FM_SECONDMATE_CHARTER='Baton control charter.' FM_HOME="$parent" \
     "$ROOT/bin/fm-home-seed.sh" mate "$child" --no-projects >/dev/null || fail "seed failed"
   child=$(cd "$child" && pwd -P)
-  pin_seeded_home "$child"
+  pin_child_home "$child"
   make_fake_curl "$child" >/dev/null
   fm_fake_exit0 "$child/fakebin" tmux treehouse no-mistakes gh gh-axi
   seed_repro_commitment "$parent" public-final-pi-rearm-ship req-pirearm2 \
@@ -1860,7 +1862,7 @@ test_retire_refuses_unbound_existing_secondmate() {
   child="$home/unbound-mate"
   mkdir -p "$child/state"
   child=$(cd "$child" && pwd -P)
-  pin_seeded_home "$child"
+  pin_child_home "$child"
   printf 'mate\n' > "$child/.fm-secondmate-home"
   fm_write_meta "$home/state/mate.meta" "kind=secondmate" "home=$child"
   log="$home/curl.log"; : > "$log"

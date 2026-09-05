@@ -375,6 +375,47 @@ test_verify_names_the_unresolvable_legacy_id_once() {
   pass "an unresolvable legacy id is refused once, naming the id"
 }
 
+# This repository's own tracked .tasks.toml selects beads storage, so the
+# captain's live home is configured by that exact file. Migrated-hold
+# resolution reads the graph from its [beads] section, and a section that
+# carries no graph path makes the scan refuse before it ever looks at the
+# attested id - turning every unresolved key into an inert configuration
+# complaint. A home carrying the tracked config verbatim must reach a real
+# graph, so an id the graph does not carry is refused as an unknown hold.
+test_tracked_tasks_toml_reaches_a_real_beads_graph() {
+  local case_dir home scout err rc=0
+  # Only the graph read is exercised here, so this case needs bd and jq rather
+  # than the beads-capable tasks-axi the rest of this family drives.
+  if ! bd --version >/dev/null 2>&1; then
+    pass "skipped without bd: the tracked beads configuration against a real graph"
+    return 0
+  fi
+  case_dir="$TMP_ROOT/tracked-config"
+  home="$case_dir/home"
+  mkdir -p "$home/data" "$home/config" "$home/projects"
+  (umask 077; mkdir -p "$home/state")
+  cp "$ROOT/.tasks.toml" "$home/.tasks.toml" \
+    || fail "could not seed the tracked backlog configuration"
+  git -C "$home/data" init -q
+  if ! (cd "$home/data" && bd init >"$case_dir/bd-init.log" 2>&1); then
+    cat "$case_dir/bd-init.log" >&2
+    fail "fixture bd init failed on $home/data"
+  fi
+  fm_fake_exit0 "$(fm_fakebin "$home")" tmux treehouse no-mistakes gh gh-axi
+  scout=tracked-config-scout
+  write_scout_with_attested_inventory "$home" "$scout" absent-tracked-key
+
+  err=$(run_captain "$home" verify "$scout" 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "verify accepted an attested id no row in the graph carries"
+  assert_not_contains "$err" "carries no graph path" \
+    "the tracked [beads] section must give the migrated-hold scan a graph path"
+  assert_contains "$err" "absent-tracked-key" \
+    "the refusal did not name the id it could not resolve"
+  assert_contains "$err" "no migrated hold for it" \
+    "the scan must run and report an unknown hold rather than refuse to scan"
+  pass "the tracked .tasks.toml gives the migrated-hold scan a reachable beads graph"
+}
+
 test_verify_resolves_a_pre_collapse_key_through_its_derived_marker() {
   local fixture home beads scout
   require_tasks_axi_beads "verify a derived pre-collapse key" || return 0
@@ -2140,5 +2181,6 @@ test_verify_resolves_a_hold_migrated_under_the_configured_prefix
 test_marker_noted_row_wins_over_a_prefix_namesake
 test_complete_accepts_a_migrated_inventory_on_beads
 test_verify_names_the_unresolvable_legacy_id_once
+test_tracked_tasks_toml_reaches_a_real_beads_graph
 test_verify_resolves_a_pre_collapse_key_through_its_derived_marker
 test_captain_hold_mutations_address_the_beads_backend
