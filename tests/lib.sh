@@ -356,10 +356,14 @@ assert_present() {
 }
 
 # fm_test_markdown_tasks_toml <home>: seed <home>/.tasks.toml from the tracked
-# config, pinned to markdown storage. The markdown-flow suites (handoff,
-# captain-hold, bearings board, public-followup) exercise markdown-specific
-# machinery with the real tasks-axi CLI, so they must not follow the tracked
-# default when it selects beads storage.
+# config, pinned to markdown storage. Any suite that drives a markdown backlog
+# through the real tasks-axi CLI must pin every home it builds, because the
+# tracked config selects the storage this repository itself runs on, and a
+# non-markdown selection sends those calls to a store the fixture never created.
+# That includes a home seeded by bin/fm-home-seed.sh, which clones this
+# repository and so inherits the tracked config while the gitignored database
+# under data/ is left behind. A suite whose subject IS backend selection writes
+# its own .tasks.toml fixture instead and must not use this helper.
 fm_test_markdown_tasks_toml() {
   local home=$1 tmp
   tmp=$(mktemp)
