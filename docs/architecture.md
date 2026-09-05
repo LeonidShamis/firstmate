@@ -286,7 +286,8 @@ Every GitHub refusal states what it could not observe as plainly as what it did,
 A confirmed merge leaves a durable role-routed outcome instead of living only in the merging agent's memory, and [`bin/fm-merge-outcome-lib.sh`](../bin/fm-merge-outcome-lib.sh)'s header owns its destination, shape, identity, normal-case deduplication, and at-least-once recovery.
 The same emitter handles a merge firstmate performed and one its poll detected, while the watcher immediately delivers the emitter's local actionable poll row.
 Teardown is fail-closed for ship worktrees: dirty worktrees refuse, and committed work must be landed before the worktree is returned.
-[`bin/fm-teardown.sh`](../bin/fm-teardown.sh)'s header owns the landed-work proofs, PR-discovery fallback, and stale-lock recovery procedure.
+It also proves the recorded worktree is still this task's before killing anything in it or returning it, refusing loudly when the records bind it to another task, and a rerun after a partial failure skips a worktree already returned instead of repeating the return.
+[`bin/fm-teardown.sh`](../bin/fm-teardown.sh)'s header owns the landed-work proofs, PR-discovery fallback, stale-lock recovery procedure, worktree-ownership evidence, and rerun-convergence record.
 
 ## Optional Relay
 
