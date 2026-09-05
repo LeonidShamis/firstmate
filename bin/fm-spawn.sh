@@ -139,12 +139,13 @@
 #   A repository with no remote at all - which a local-only project is allowed
 #   to be - fetches nothing and resets to the shared checkout's own default
 #   branch instead: local main or master when one exists, even while the
-#   checkout itself sits on a feature branch, and otherwise the branch the
-#   common git dir's HEAD names, never assuming a name. A repository whose only
-#   remotes are not named origin keeps the origin rule and is refused when
-#   origin cannot be fetched. An unreachable origin, unresolved remote or local
-#   default branch, or non-clean worktree refuses the spawn rather than risking
-#   a PR based on stale history.
+#   checkout itself sits on a feature branch, and otherwise the local branch
+#   the configured init.defaultBranch names. The branch the checkout happens to
+#   have out is never taken on its own. A repository whose only remotes are not
+#   named origin keeps the origin rule and is refused when origin cannot be
+#   fetched. An unreachable origin, unresolved remote or local default branch,
+#   or non-clean worktree refuses the spawn rather than risking a PR based on
+#   stale history.
 #   A slot whose only deviation is a stale submodule gitlink is refused by that
 #   same clean check, but is reported as a stale checkout naming each submodule
 #   and both pins; nothing is converged or removed, and no remedy is suggested.
@@ -1807,27 +1808,20 @@ EOF
 # does, through default_branch, so a local main or master wins even while the
 # project checkout is stranded on a feature branch - the same rule
 # primary_head_commit follows so a stray branch never becomes the fleet's base.
-# Only when no such branch exists does the common git dir's HEAD, the branch the
-# project checkout itself is on, stand in as the default - never a hardcoded
-# "main", because a repository with no remote is exactly the one whose default
-# branch name nothing else has agreed on. A branch that resolves neither way is
-# unresolvable, and the caller refuses rather than launching from whatever the
-# slot happened to hold.
+# When no such branch exists, the only other name anything has agreed on is the
+# configured init.defaultBranch, accepted when that local branch exists. The
+# branch the project checkout happens to have out is never taken on its own:
+# a name nothing recognises as the default is unresolvable, and the caller
+# refuses rather than launching from whatever the checkout or slot holds.
 local_default_branch() {  # <worktree>
-  local worktree=$1 common ref
+  local worktree=$1 configured
   if default_branch "$worktree"; then
     return 0
   fi
-  common=$(git -C "$worktree" rev-parse --git-common-dir 2>/dev/null) || return 1
-  [ -n "$common" ] || return 1
-  case $common in
-    /*) ;;
-    *) common="$(cd "$worktree" 2>/dev/null && pwd -P)/$common" ;;
-  esac
-  ref=$(git --git-dir="$common" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-  [ -n "$ref" ] || return 1
-  git -C "$worktree" show-ref --verify --quiet "refs/heads/$ref" || return 1
-  printf '%s\n' "$ref"
+  configured=$(git -C "$worktree" config --get init.defaultBranch 2>/dev/null || true)
+  [ -n "$configured" ] || return 1
+  git -C "$worktree" show-ref --verify --quiet "refs/heads/$configured" || return 1
+  printf '%s\n' "$configured"
 }
 
 freshen_spawn_worktree_base() {  # <worktree>

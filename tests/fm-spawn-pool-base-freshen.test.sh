@@ -270,6 +270,7 @@ test_remote_less_pool_refreshes_to_local_default_tip() {
   id='pool-local-only-base-r12'
   rec=$(make_local_only_case local-only-base "$id" trunk)
   read_case_record "$rec"
+  git -C "$PROJECT_DIR" config init.defaultBranch trunk
 
   out=$(run_spawn "$id" --mode local-only --yolo off)
   status=$?
@@ -296,6 +297,7 @@ test_remote_less_dirty_pool_refuses_without_discarding_work() {
   id='pool-local-only-dirty-r13'
   rec=$(make_local_only_case local-only-dirty "$id" trunk)
   read_case_record "$rec"
+  git -C "$PROJECT_DIR" config init.defaultBranch trunk
   before=$(git -C "$POOL_DIR" rev-parse HEAD)
   printf 'keep this local work\n' > "$POOL_DIR/uncommitted.txt"
 
@@ -316,9 +318,9 @@ test_unresolved_local_default_refuses_pool() {
   id='pool-local-only-unresolved-r14'
   rec=$(make_local_only_case local-only-unresolved "$id" trunk)
   read_case_record "$rec"
-  # No origin to ask, the checkout itself detached so its HEAD names no branch,
-  # and no local main or master to fall back to: the base is unknowable, and the
-  # stale-base guarantee has to hold exactly as it does for an unreachable origin.
+  # No origin to ask, no local main or master, no configured init.defaultBranch,
+  # and the checkout itself detached: the base is unknowable, and the stale-base
+  # guarantee has to hold exactly as it does for an unreachable origin.
   git -C "$PROJECT_DIR" checkout --quiet --detach
   before=$(git -C "$POOL_DIR" rev-parse HEAD)
 
@@ -398,6 +400,74 @@ test_non_origin_remote_still_refuses_without_origin() {
     printf '# observed non-origin-remote refusal: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
   fi
   pass "a repository whose only remote is not origin is still refused without fetching"
+}
+
+# A repository whose default branch is neither main nor master has nothing but
+# its configured init.defaultBranch to say which branch that is. When that name
+# carries no local branch, the checkout's own feature branch is not promoted in
+# its place: the base is unknowable and the spawn refuses, exactly as it does
+# when origin cannot be reached.
+test_remote_less_unrecognised_checkout_branch_refuses_pool() {
+  local rec id out status before
+  id='pool-local-only-unrecognised-head-r17'
+  rec=$(make_local_only_case local-only-unrecognised-head "$id" trunk)
+  read_case_record "$rec"
+  git -C "$PROJECT_DIR" config init.defaultBranch develop
+  git -C "$PROJECT_DIR" checkout --quiet -b fm/captain-feature
+  printf 'must not reach the fleet\n' > "$PROJECT_DIR/feature-only.txt"
+  git -C "$PROJECT_DIR" add feature-only.txt
+  git -C "$PROJECT_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm feature-only
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+
+  out=$(run_spawn "$id" --mode local-only --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn launched from the checkout's feature branch although nothing recognises it as the default"
+  assert_contains "$out" "could not determine the local default branch" \
+    "spawn did not clearly refuse a checkout branch nothing recognises as the default"
+  assert_contains "$out" "refusing to launch from a potentially stale base" \
+    "the unrecognised-branch refusal dropped the stale-base guarantee"
+  assert_not_contains "$out" "spawned $id" "spawn reported success despite refusing"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "spawn moved HEAD while refusing a checkout branch nothing recognises as the default"
+  [ ! -e "$POOL_DIR/feature-only.txt" ] || fail "the refused pool carried the checkout's feature-branch content"
+  if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
+    printf '# observed unrecognised-checkout-branch refusal: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
+  fi
+  pass "a remote-less checkout on a branch nothing recognises as the default is refused, not promoted"
+}
+
+# The same shape with init.defaultBranch naming the real default resolves it, so
+# the spawn launches from that branch's tip and not from the checked-out feature.
+test_remote_less_configured_default_wins_over_checked_out_feature_branch() {
+  local rec id out status current feature_tip branch_head
+  id='pool-local-only-configured-default-r18'
+  rec=$(make_local_only_case local-only-configured-default "$id" trunk)
+  read_case_record "$rec"
+  git -C "$PROJECT_DIR" config init.defaultBranch trunk
+  git -C "$PROJECT_DIR" checkout --quiet -b fm/captain-feature
+  printf 'must not reach the fleet\n' > "$PROJECT_DIR/feature-only.txt"
+  git -C "$PROJECT_DIR" add feature-only.txt
+  git -C "$PROJECT_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm feature-only
+  feature_tip=$(git -C "$PROJECT_DIR" rev-parse HEAD)
+  current=$(git -C "$PROJECT_DIR" rev-parse "refs/heads/$DEFAULT_BRANCH")
+  [ "$feature_tip" != "$current" ] || fail "fixture did not put the checkout ahead of $DEFAULT_BRANCH"
+
+  out=$(run_spawn "$id" --mode local-only --yolo off)
+  status=$?
+  expect_code 0 "$status" "spawn should resolve the configured default branch while the checkout is on a feature branch"
+  assert_contains "$out" "spawned $id" "spawn did not report success with a configured default branch"
+  branch_head=$(git -C "$POOL_DIR" rev-parse HEAD)
+  [ "$branch_head" = "$current" ] || fail "spawn did not start at the local $DEFAULT_BRANCH tip"
+  [ "$branch_head" != "$feature_tip" ] || fail "spawn based the pool on the checkout's feature branch"
+  [ ! -e "$POOL_DIR/feature-only.txt" ] || fail "the refreshed pool carried the checkout's feature-branch content"
+  assert_grep 'must survive a newly spawned branch' "$POOL_DIR/advanced-local.txt" \
+    "the refreshed pool omitted content committed to the configured default branch"
+  if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
+    printf '# observed configured-default spawn: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
+    printf '# observed base: HEAD=%s refs/heads/%s=%s feature=%s\n' \
+      "$branch_head" "$DEFAULT_BRANCH" "$current" "$feature_tip"
+  fi
+  pass "a remote-less project launches from its configured default branch, not the checked-out feature branch"
 }
 
 # A slot left on a stale submodule pin is the field failure this diagnosis exists
@@ -634,6 +704,8 @@ test_remote_less_dirty_pool_refuses_without_discarding_work
 test_unresolved_local_default_refuses_pool
 test_remote_less_pool_follows_default_over_checked_out_feature_branch
 test_non_origin_remote_still_refuses_without_origin
+test_remote_less_unrecognised_checkout_branch_refuses_pool
+test_remote_less_configured_default_wins_over_checked_out_feature_branch
 test_stale_submodule_pin_explains_itself
 test_unpushed_submodule_commit_is_still_uncommitted_work
 test_work_inside_submodule_is_still_uncommitted_work
