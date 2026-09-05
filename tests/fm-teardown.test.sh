@@ -2767,11 +2767,12 @@ test_rerun_after_partial_failure_refuses_a_reassigned_worktree() {
   mv "$case_dir/x2.tmp" "$case_dir/state/task-x2.meta"
   printf 'task=task-x2\nstate=%s\n' "$(cd "$case_dir/state" && pwd -P)" \
     > "$case_dir/wt/.fm-task-owner"
+  git -C "$case_dir/wt" checkout -q --detach
   rc=0
   run_teardown "$case_dir" > "$case_dir/third.stdout" 2> "$case_dir/third.stderr" || rc=$?
   [ "$rc" -ne 0 ] || fail "reassigned-worktree-refusal: a worktree marked as another task's was torn down"
-  assert_grep "task-x2" "$case_dir/third.stderr" \
-    "reassigned-worktree-refusal: the marked-worktree refusal did not name its owner"
+  assert_grep "is marked as task task-x2" "$case_dir/third.stderr" \
+    "reassigned-worktree-refusal: the marked-worktree refusal did not cite the marker naming its owner"
   [ "$(count_returns "$case_dir")" = 1 ] \
     || fail "reassigned-worktree-refusal: the marked worktree was returned anyway"
   pass "a rerun after a post-return failure refuses loudly instead of tearing down a reassigned worktree"
