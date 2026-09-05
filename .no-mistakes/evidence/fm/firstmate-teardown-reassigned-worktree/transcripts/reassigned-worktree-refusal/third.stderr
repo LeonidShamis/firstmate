@@ -1,0 +1,3 @@
+REFUSED: worktree /tmp/fm-teardown-tests.Rx7PUW/reassigned-worktree-refusal/wt is no longer task task-x1's: it is marked as task task-x2's in /tmp/fm-teardown-tests.Rx7PUW/reassigned-worktree-refusal/state.
+Killing its processes or returning it would destroy another task's work.
+Reconcile the task records first (clear the stale worktree binding on task-x1), then rerun teardown; nothing was killed, returned, or discarded.

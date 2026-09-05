@@ -1,0 +1,20 @@
+not ok - leaked-process-reap: leaked worktree process survived teardown
+[test_leaked_worktree_process_is_reaped] exit=1
+not ok - leaked-tasktmp-reap: leaked tasktmp process survived teardown
+[test_leaked_tasktmp_process_is_reaped] exit=1
+ok - missing lsof falls back to reaping the tmux pane process group
+[test_lsof_absent_reaps_tmux_process_group] exit=0
+ok - an erroring lsof scan refuses teardown and preserves the task
+[test_lsof_error_refuses_before_removal] exit=0
+ok - a reused pid with a different start time is never force-killed
+[test_reused_pid_identity_is_not_force_killed] exit=0
+not ok - exec-changed-process: teardown should succeed: expected exit 0, got 1
+[test_exec_changed_process_is_still_reaped] exit=1
+not ok - grace-spawn-convergence: TERM handler did not spawn a child
+[test_process_spawned_during_grace_is_reaped_on_later_pass] exit=1
+ok - persistent leaked processes refuse teardown after bounded retries
+[test_persistent_scan_refuses_after_bounded_retries] exit=0
+ok - a process exiting during identity lookup does not block teardown
+[test_process_exit_during_identity_lookup_does_not_refuse] exit=0
+not ok - abort-then-reap-then-remove-order: the leaked process was not yet reaped when the worktree return ran
+[test_run_abort_precedes_process_reap_precedes_worktree_removal] exit=1

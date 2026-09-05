@@ -1,0 +1,25 @@
+## state/task-x1.meta before teardown
+window=firstmate:fm-task-x1
+endpoint_task_id=task-x1
+worktree=/tmp/fm-teardown-tests.O3KPz8/converged-meta-demo/wt
+project=/tmp/fm-teardown-tests.O3KPz8/converged-meta-demo/project
+kind=ship
+mode=no-mistakes
+## worktree marker before teardown (.fm-task-owner)
+(none: fixture worktree was not spawned by fm-spawn.sh)
+## first teardown exit=1 (pool return succeeded, later step failed)
+## treehouse calls so far
+return --force /tmp/fm-teardown-tests.O3KPz8/converged-meta-demo/wt
+## state/task-x1.meta after the partial failure (record retained and converged)
+window=firstmate:fm-task-x1
+endpoint_task_id=task-x1
+worktree=/tmp/fm-teardown-tests.O3KPz8/converged-meta-demo/wt
+project=/tmp/fm-teardown-tests.O3KPz8/converged-meta-demo/project
+kind=ship
+mode=no-mistakes
+worktree_returned=1
+## rerun without reconciling: exit and stderr
+exit=1
+teardown: worktree /tmp/fm-teardown-tests.O3KPz8/converged-meta-demo/wt was already returned for task-x1 by an earlier run; skipping every worktree step
+## treehouse calls after the unreconciled rerun (must still be one)
+return --force /tmp/fm-teardown-tests.O3KPz8/converged-meta-demo/wt

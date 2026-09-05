@@ -1,0 +1,1 @@
+teardown: worktree /tmp/fm-teardown-tests.jic79R/reconciled-rerun/wt was already returned for task-x1 by an earlier run; skipping every worktree step

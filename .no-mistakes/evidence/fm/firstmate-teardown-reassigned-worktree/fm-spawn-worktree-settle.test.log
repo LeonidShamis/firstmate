@@ -1,0 +1,4 @@
+ok - a single transient stale pane_current_path read is not accepted as the worktree
+ok - an already-settled pane confirms via the existing inter-poll sleep, not an extra full cycle
+ok - spawn marks the settled worktree as this task's, out of git's view
+# all fm-spawn-worktree-settle tests passed

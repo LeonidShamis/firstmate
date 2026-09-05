@@ -1,0 +1,6 @@
+ok - an ordinary teardown still reaps and returns the worktree that is its own
+[test_ordinary_teardown_reaps_and_returns_its_own_worktree] exit=0
+ok - a rerun after a post-return failure refuses loudly instead of tearing down a reassigned worktree
+[test_rerun_after_partial_failure_refuses_a_reassigned_worktree] exit=0
+ok - a rerun after the records are reconciled completes without repeating the worktree steps
+[test_rerun_after_reconciled_records_completes_cleanly] exit=0

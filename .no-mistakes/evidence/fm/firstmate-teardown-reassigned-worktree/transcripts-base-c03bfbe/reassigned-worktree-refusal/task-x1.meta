@@ -1,0 +1,6 @@
+window=firstmate:fm-task-x1
+endpoint_task_id=task-x1
+worktree=/tmp/fm-teardown-tests.E8MSjo/reassigned-worktree-refusal/wt
+project=/tmp/fm-teardown-tests.E8MSjo/reassigned-worktree-refusal/project
+kind=ship
+mode=no-mistakes

@@ -1,0 +1,6 @@
+ok - an ordinary teardown still reaps and returns the worktree that is its own
+[test_ordinary_teardown_reaps_and_returns_its_own_worktree] exit=0
+not ok - reassigned-worktree-refusal: the rerun killed the successor task's process
+[test_rerun_after_partial_failure_refuses_a_reassigned_worktree] exit=1
+not ok - reconciled-rerun: the rerun returned the already-returned worktree again
+[test_rerun_after_reconciled_records_completes_cleanly] exit=1
