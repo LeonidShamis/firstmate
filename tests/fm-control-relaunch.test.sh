@@ -15,8 +15,10 @@
 #   5. A launch failure after the agent is stopped keeps the prior record,
 #      reports the concrete state, and preserves the work.
 #   6. fm-spawn --relaunch refuses on its own: a live agent, a contradicting
-#      flag, an extra positional, or a backend that cannot prove the previous
-#      agent exited.
+#      flag, an extra positional, a backend that cannot prove the previous
+#      agent exited, or a worktree an earlier teardown already returned (which
+#      fm-control also refuses before it stops anything, and neither rewrites
+#      the owner marker the worktree's new task holds).
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -1312,6 +1314,52 @@ test_spawn_relaunch_refuses_a_pane_outside_the_worktree() {
   pass "fm-spawn --relaunch: refuses to start a replacement outside the copy holding the work"
 }
 
+# A teardown that returned the worktree and then failed leaves the record with
+# bin/fm-teardown.sh's worktree_returned=1 and the recorded path still present -
+# by now leased to another task, whose owner marker sits in it. A relaunch must
+# refuse rather than adopt that path and rewrite the marker as its own.
+returned_worktree_case() {  # <name> <id>
+  local dir
+  dir=$(new_case "$1" "$2")
+  add_ship_task "$dir" "$2" claude
+  echo "worktree_returned=1" >> "$dir/home/state/$2.meta"
+  printf 'task=other\nstate=%s\n' "$dir/home/state" > "$dir/wt/.fm-task-owner"
+  cp "$dir/wt/.fm-task-owner" "$dir/marker.before"
+  cp "$dir/home/state/$2.meta" "$dir/meta.before"
+  printf '%s\n' "$dir"
+}
+
+assert_returned_worktree_untouched() {  # <case-dir> <id>
+  cmp -s "$1/wt/.fm-task-owner" "$1/marker.before" \
+    || fail "a refused relaunch must not rewrite another task's owner marker"
+  cmp -s "$1/home/state/$2.meta" "$1/meta.before" \
+    || fail "a refused relaunch must leave the returned-marked record byte-identical"
+  [ -z "$(cat "$1/fake/literal")" ] || fail "a refused relaunch must send nothing"
+}
+
+test_spawn_relaunch_refuses_a_returned_worktree() {
+  local dir out rc
+  dir=$(returned_worktree_case returned rl19)
+  printf 'zsh' > "$dir/fake/command"
+  out=$(run_spawn "$dir" rl19 --relaunch --harness claude); rc=$?
+  expect_code 1 "$rc" "a returned worktree should refuse"
+  assert_contains "$out" "already returned" "the refusal should name the returned worktree"
+  assert_contains "$out" "fm-teardown.sh rl19" "the refusal should point at rerunning teardown"
+  assert_returned_worktree_untouched "$dir" rl19
+  pass "fm-spawn --relaunch: refuses to adopt a worktree an earlier teardown already returned"
+}
+
+test_control_relaunch_refuses_a_returned_worktree_before_stopping_anything() {
+  local dir out rc
+  dir=$(returned_worktree_case returnedctl rl20)
+  out=$(run_control "$dir" rl20 relaunch --note "x"); rc=$?
+  expect_code 1 "$rc" "a returned worktree should refuse"
+  assert_contains "$out" "already returned" "the refusal should name the returned worktree"
+  [ "$(cat "$dir/fake/command")" = claude ] || fail "a refused relaunch must not stop the agent"
+  assert_returned_worktree_untouched "$dir" rl20
+  pass "fm-control relaunch: a returned worktree refuses before the agent is touched"
+}
+
 test_same_harness_relaunch_keeps_identity_and_reuses_the_endpoint
 test_relaunch_preserves_durable_task_metadata
 test_relaunch_serializes_concurrent_durable_metadata_publication
@@ -1358,3 +1406,5 @@ test_spawn_relaunch_refuses_a_live_agent
 test_spawn_relaunch_refuses_contradicting_flags
 test_spawn_relaunch_refuses_an_unrecorded_task
 test_spawn_relaunch_refuses_a_pane_outside_the_worktree
+test_spawn_relaunch_refuses_a_returned_worktree
+test_control_relaunch_refuses_a_returned_worktree_before_stopping_anything

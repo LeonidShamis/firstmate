@@ -141,7 +141,35 @@ test_already_settled_pane_costs_one_confirm_sleep() {
   pass "an already-settled pane confirms via the existing inter-poll sleep, not an extra full cycle"
 }
 
+# The task-owner marker is what lets bin/fm-teardown.sh prove a recorded worktree
+# is still this task's before it kills processes in that worktree or returns it to
+# the pool, so every spawn must leave the marker in the SETTLED worktree, bound to
+# this task and to this home's records, and out of git's view.
+test_spawn_marks_the_settled_worktree_as_this_tasks() {
+  local rec id out status state_real
+  id=settle-owner-marker-z3
+  rec=$(make_settle_case settle-owner-marker "$id" 1)
+  read_settle_record "$rec"
+
+  out=$(run_settle_spawn "$id")
+  status=$?
+  expect_code 0 "$status" "spawn should succeed once the pane settles"
+  assert_contains "$out" "spawned $id" "spawn did not report success"
+  assert_present "$WT_DIR/.fm-task-owner" "spawn left the settled worktree unmarked"
+  assert_grep "task=$id" "$WT_DIR/.fm-task-owner" \
+    "the marker does not name the task that owns the worktree"
+  state_real=$(cd "$HOME_DIR/state" && pwd -P)
+  assert_grep "state=$state_real" "$WT_DIR/.fm-task-owner" \
+    "the marker does not name the records this task belongs to"
+  assert_absent "$STALE_DIR/.fm-task-owner" \
+    "spawn marked the transient stale path instead of the settled worktree"
+  [ -z "$(git -C "$WT_DIR" status --porcelain -- .fm-task-owner)" ] \
+    || fail "the marker is visible to git and would block teardown's dirty check"
+  pass "spawn marks the settled worktree as this task's, out of git's view"
+}
+
 test_single_stale_first_read_is_not_accepted
 test_already_settled_pane_costs_one_confirm_sleep
+test_spawn_marks_the_settled_worktree_as_this_tasks
 
 echo "# all fm-spawn-worktree-settle tests passed"

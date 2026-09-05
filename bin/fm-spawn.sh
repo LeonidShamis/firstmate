@@ -30,8 +30,11 @@
 #   ordinary relaunch. It refuses unless the recorded endpoint is positively
 #   agent-free on a backend with a recovery-grade agent-state classifier (tmux
 #   or herdr), refuses unless the endpoint's shell is sitting in the recorded
-#   worktree, and clears the previous harness's per-task wiring before arming
-#   the new incarnation.
+#   worktree, refuses while the record carries bin/fm-teardown.sh's
+#   worktree_returned=1 (that worktree was already handed back and may be
+#   another task's now; a rerun of teardown retires the task instead), and
+#   clears the previous harness's per-task wiring before arming the new
+#   incarnation.
 #   --harness <name> is the explicit per-spawn harness/profile adapter. The old
 #   positional harness arg still works for back-compat.
 #   --model <name> and --effort <low|medium|high|xhigh|max> are concrete profile
@@ -178,6 +181,13 @@
 #     __OPINPUT__   absolute path to the canonical operational-input encoder
 #     __WORKTREE__  absolute path to the task worktree
 #     __CURSORBIN__ resolved, cursor-verified executable for a cursor launch
+# Every non-secondmate spawn writes a gitignored .fm-task-owner marker into the task
+# worktree, naming this task id and the state directory holding its records
+# ("task=<id>" and "state=<canonical state dir>"). It is the harness- and
+# backend-independent proof of which task the worktree currently belongs to, rewritten
+# on every spawn (a relaunch included) so the newest owner always wins.
+# bin/fm-teardown.sh reads it before killing processes in, or returning, a recorded
+# worktree, so a pool slot already handed to another task is never torn down as this one's.
 # Verified per-harness turn-end hooks are installed automatically where enabled; some live outside the worktree.
 # Kimi uses one surgically installed Firstmate region in $HOME/.kimi-code/config.toml,
 # a firstmate-owned global hook and registry, and a gitignored per-task pointer.
@@ -1048,6 +1058,14 @@ if [ "$RELAUNCH" -eq 1 ]; then
   RELAUNCH_WT=$(fm_meta_get "$RELAUNCH_META" worktree)
   [ -n "$RELAUNCH_WT" ] && [ -d "$RELAUNCH_WT" ] || {
     echo "error: task $ID's recorded worktree '${RELAUNCH_WT:-none}' is missing; refusing to relaunch without the local copy its work lives in" >&2
+    exit 1
+  }
+  # A worktree that an earlier teardown already returned or removed is no
+  # longer this task's, whatever the recorded path still says (bin/fm-teardown.sh
+  # owns that record). Adopting it would rebind this task to whichever task the
+  # pool handed the slot to next and overwrite that task's owner marker.
+  [ "$(fm_meta_get "$RELAUNCH_META" worktree_returned)" != 1 ] || {
+    echo "error: task $ID's recorded worktree $RELAUNCH_WT was already returned by an earlier teardown and may now belong to another task; refusing to relaunch into it (rerun bin/fm-teardown.sh $ID to finish retiring the task)" >&2
     exit 1
   }
   if [ "$KIND" = secondmate ]; then
@@ -2396,6 +2414,15 @@ exclude_path() {
   mkdir -p "$(dirname "$EXCL")"
   grep -qxF "$rel" "$EXCL" 2>/dev/null || echo "$rel" >> "$EXCL"
 }
+if [ "$KIND" != secondmate ] && [ -d "$WT" ]; then
+  # Task-owner marker (see script header): the durable proof that this exact
+  # worktree belongs to this task, written before any agent starts in it.
+  printf 'task=%s\nstate=%s\n' "$ID" "$STATE_REAL" > "$WT/.fm-task-owner" || {
+    echo "error: could not record the task-owner marker in $WT" >&2
+    exit 1
+  }
+  exclude_path '.fm-task-owner'
+fi
 if [ "$RELAUNCH" -eq 1 ]; then
   # Retire the previous incarnation's per-task harness wiring before arming the
   # new one. Without this, a harness switch would leave the old adapter's hook

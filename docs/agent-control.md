@@ -63,6 +63,7 @@ It is not deterministic across the verified adapters: codex and grok resume only
    A harness change resets model and effort unless they are named too, because a model chosen for one adapter does not transfer to another.
 2. **Safe checkpoint.**
    The recorded worktree must exist and be a worktree root; its head and dirty state are recorded.
+   A record that an earlier teardown already marked as returned is refused too, because the pool may since have handed that worktree to another task; rerunning `bin/fm-teardown.sh <id>` retires the task instead.
    For a `kind=secondmate` task, the home's identity marker must match and its child records must be readable, so a relaunch can never strand child work behind an unreadable home.
    A secondmate's own crewmates run in their own endpoints and outlive its relaunch; the relaunched secondmate reconciles them from its home's durable records at startup.
 3. **Record the note.**
@@ -98,7 +99,7 @@ Switching harness is therefore one ordinary relaunch rather than a separate mech
   zellij, orca, and cmux are refused rather than reported as successful blind.
 - An ambiguous or unreadable endpoint state refuses.
   Only a positively classified state acts.
-- `fm-spawn --relaunch` independently refuses unless the recorded endpoint is positively agent-free and its shell is sitting in the recorded worktree, so a replacement can never join a live agent or start outside the copy holding the work.
+- `fm-spawn --relaunch` independently refuses unless the recorded endpoint is positively agent-free and its shell is sitting in the recorded worktree, and it repeats the checkpoint's returned-worktree refusal, so a replacement can never join a live agent, start outside the copy holding the work, or rebind to a pool slot another task now holds.
 
 ## Capability matrix
 
