@@ -1,0 +1,16 @@
+$ bin/fm-spawn.sh --help  (excerpt: pooled-base freshen paragraph)
+136-  Before a fresh ship or scout worker starts, its clean task worktree fetches
+137-  origin, resolves the current remote default branch, and resets to its tip.
+138:  A repository with no remote at all - which a local-only project is allowed
+139-  to be - fetches nothing and resets to the shared checkout's own default
+140-  branch instead: local main or master when one exists, even while the
+141-  checkout itself sits on a feature branch, and otherwise the local branch
+142-  the configured init.defaultBranch names. The branch the checkout happens to
+143-  have out is never taken on its own. A repository whose only remotes are not
+144-  named origin keeps the origin rule and is refused when origin cannot be
+145-  fetched. An unreachable origin, unresolved remote or local default branch,
+146-  or non-clean worktree refuses the spawn rather than risking a PR based on
+147-  stale history.
+148-  A slot whose only deviation is a stale submodule gitlink is refused by that
+149-  same clean check, but is reported as a stale checkout naming each submodule
+150-  and both pins; nothing is converged or removed, and no remedy is suggested.

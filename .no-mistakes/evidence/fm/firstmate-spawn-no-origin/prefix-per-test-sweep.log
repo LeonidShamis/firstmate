@@ -1,0 +1,8 @@
+# each new remote-less test run in isolation against the PRE-FIX bin/fm-spawn.sh (base c03bfbe); verdict line only
+test_remote_less_pool_refreshes_to_local_default_tip => not ok - spawn should refresh a stale pooled worktree in a repository with no origin: expected exit 0, got 1
+test_remote_less_dirty_pool_refuses_without_discarding_work => not ok - spawn did not clearly refuse a dirty pooled worktree without an origin remote (missing: 'is not clean')
+test_unresolved_local_default_refuses_pool => not ok - spawn did not clearly refuse an unresolvable local default branch (missing: 'could not determine the local default branch')
+test_remote_less_pool_follows_default_over_checked_out_feature_branch => not ok - spawn should refresh a remote-less pool while the checkout is on a feature branch: expected exit 0, got 1
+test_non_origin_remote_still_refuses_without_origin => ok - a repository whose only remote is not origin is still refused without fetching
+test_remote_less_unrecognised_checkout_branch_refuses_pool => not ok - spawn did not clearly refuse a checkout branch nothing recognises as the default (missing: 'could not determine the local default branch')
+test_remote_less_configured_default_wins_over_checked_out_feature_branch => not ok - spawn should resolve the configured default branch while the checkout is on a feature branch: expected exit 0, got 1

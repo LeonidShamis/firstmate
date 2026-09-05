@@ -1,0 +1,31 @@
+# Manual reproduction: freshly `git init`-ed local-only project, no remote, pool worktree allocated, then main advanced.
+# (tmux and treehouse are fakes; the git repository and bin/fm-spawn.sh are real.)
+$ git init -b main projects/localonly && commit README
+$ git worktree add --detach <pool> HEAD   # treehouse pool slot
+$ git -C projects/localonly remote
+(empty: no remotes)
+$ git -C projects/localonly rev-parse refs/heads/main -> cf907afe9414003d2b517b92c2203fe45d45b421
+$ git -C <pool> rev-parse HEAD (before spawn)      -> 487364598db3054c38758886a3345d9b7cb69ebe
+
+## BEFORE the fix (bin/fm-spawn.sh at base c03bfbe):
+$ fm-spawn.sh localonly-task-1 projects/localonly --mode local-only --yolo off
+warning: /tmp/fm-manual-repro.YqA1vD/home/data/localonly-task-1/brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches
+notice: localonly-task-1 ships mode=local-only while the standing posture for localonly is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+fatal: 'origin' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+error: could not fetch origin for pooled worktree '/tmp/fm-manual-repro.YqA1vD/pool'; refusing to launch from a potentially stale base
+exit=1
+$ git -C <pool> rev-parse HEAD (after refused spawn) -> 487364598db3054c38758886a3345d9b7cb69ebe
+
+## AFTER the fix (bin/fm-spawn.sh at 9a07823):
+$ fm-spawn.sh localonly-task-1 projects/localonly --mode local-only --yolo off
+warning: /tmp/fm-manual-repro.YqA1vD/home/data/localonly-task-1/brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches
+notice: localonly-task-1 ships mode=local-only while the standing posture for localonly is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned localonly-task-1 harness=codex kind=ship mode=local-only yolo=off window=firstmate:fm-localonly-task-1 worktree=/tmp/fm-manual-repro.YqA1vD/pool
+exit=0
+$ git -C <pool> rev-parse HEAD (after spawn)         -> cf907afe9414003d2b517b92c2203fe45d45b421
+$ ls <pool>                                          -> NEW.md README.md 
+$ git -C projects/localonly remote (after spawn)    -> '' (still no remote; no self-pointing origin was added)
