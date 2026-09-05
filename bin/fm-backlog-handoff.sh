@@ -628,7 +628,7 @@ remote_handoff() { # <secondmate-id> <keys...>
     echo "error: a compatible tasks-axi with atomic multi-ID mv support is required to stage remote handoffs; run bin/fm-bootstrap.sh for the required version" >&2
     return 1
   }
-  if [ "$(fm_tasks_axi_storage_backend "$FM_HOME")" = beads ]; then
+  if [ "$(fm_tasks_axi_backend "$FM_HOME")" = beads ]; then
     echo "error: secondmate backlog handoff requires markdown backlog storage; this home's .tasks.toml selects beads (data/backlog.md is a mirror). Keep handoff homes on backend = \"markdown\"." >&2
     return 1
   fi
@@ -854,7 +854,7 @@ fi
 # backlog storage: with beads storage this home's backlog.md is a regenerated
 # mirror, and moving items out of the mirror would silently diverge from the
 # beads database.
-if [ "$(fm_tasks_axi_storage_backend "$FM_HOME")" = beads ]; then
+if [ "$(fm_tasks_axi_backend "$FM_HOME")" = beads ]; then
   echo "error: secondmate backlog handoff requires markdown backlog storage; this home's .tasks.toml selects beads (data/backlog.md is a mirror). Keep handoff homes on backend = \"markdown\"." >&2
   exit 1
 fi
