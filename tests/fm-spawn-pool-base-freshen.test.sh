@@ -76,10 +76,16 @@ $1
 EOF
 }
 
+# The spawn resolves a remote-less base partly from git configuration, so the
+# host's own global or system init.defaultBranch would otherwise decide these
+# cases: a machine configured with the fixture's branch name would resolve a base
+# the test expects to be unresolvable. Every case here states the configuration it
+# needs in the project repository itself, so the spawn reads no host config at all.
 run_spawn() {
   local id=$1
   shift
-  FM_ROOT_OVERRIDE='' FM_HOME="$HOME_DIR" \
+  GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null \
+    FM_ROOT_OVERRIDE='' FM_HOME="$HOME_DIR" \
     FM_STATE_OVERRIDE="$HOME_DIR/state" FM_DATA_OVERRIDE="$HOME_DIR/data" \
     FM_PROJECTS_OVERRIDE="$HOME_DIR/projects" FM_CONFIG_OVERRIDE="$HOME_DIR/config" \
     FM_SPAWN_NO_GUARD=1 TMUX="fake,1,0" FM_FAKE_PANE_PATH="$POOL_DIR" \
@@ -318,9 +324,11 @@ test_unresolved_local_default_refuses_pool() {
   id='pool-local-only-unresolved-r14'
   rec=$(make_local_only_case local-only-unresolved "$id" trunk)
   read_case_record "$rec"
-  # No origin to ask, no local main or master, no configured init.defaultBranch,
-  # and the checkout itself detached: the base is unknowable, and the stale-base
-  # guarantee has to hold exactly as it does for an unreachable origin.
+  # No origin to ask, no local main or master, no configured init.defaultBranch
+  # (run_spawn isolates the host's own git configuration, so this is guaranteed
+  # rather than assumed), and the checkout itself detached: the base is
+  # unknowable, and the stale-base guarantee has to hold exactly as it does for
+  # an unreachable origin.
   git -C "$PROJECT_DIR" checkout --quiet --detach
   before=$(git -C "$POOL_DIR" rev-parse HEAD)
 
