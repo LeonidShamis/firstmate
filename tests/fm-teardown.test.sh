@@ -49,6 +49,14 @@
 #   (w) index.lock mtime read failure                         -> lock kept, REFUSE
 #   (x) transient lock cleared after first failed return      -> retry ALLOW
 #   (y) persistent lock (never clears, not provably stale)    -> REFUSE loudly
+#
+# Also covers worktree ownership and rerun convergence: a teardown that returns the
+# worktree and then fails a later step leaves its record on disk, and treehouse can
+# hand that freed slot to the next task before the operator reruns teardown.
+#   (z)  ordinary teardown of its own worktree            -> reap and return
+#   (aa) rerun on a worktree a second task now claims or has
+#        marked as its own                                 -> REFUSE loudly, no kill
+#   (ab) rerun after the records are reconciled           -> ALLOW, no second return
 set -u
 
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -2596,7 +2604,214 @@ EOF
   pass "the run abort and the leaked-process reap both complete before the destructive worktree return"
 }
 
+# Worktree ownership and re-run convergence (bin/fm-teardown.sh).
+#
+# A teardown that returns the worktree to the pool and then fails a later step
+# leaves its task record on disk. treehouse can hand that freed slot to the next
+# task before the operator reruns teardown, so the rerun must never kill
+# processes in, or return, a worktree that now belongs to someone else.
+
+# lsof stub reporting one live process per "<pid><TAB><cwd>" line of the file in
+# FM_FAKE_LSOF_CWD_MAP, in lsof's own -Fpn record form. A pid that has already
+# exited is dropped, exactly as a real scan would drop it, so the reap's identity
+# rechecks see the same disappearance a real one does. Every other lsof query
+# (the lock-holder check) reports no holder.
+add_lsof_cwd_map() {
+  local case_dir=$1
+  cat > "$case_dir/fakebin/lsof" <<'SH'
+#!/usr/bin/env bash
+case " $* " in
+  *" -d cwd "*)
+    [ -n "${FM_FAKE_LSOF_CWD_MAP:-}" ] && [ -f "$FM_FAKE_LSOF_CWD_MAP" ] || exit 0
+    while IFS=$'\t' read -r pid path; do
+      [ -n "$pid" ] && [ -n "$path" ] || continue
+      kill -0 "$pid" 2>/dev/null || continue
+      printf 'p%s\nfcwd\nn%s\n' "$pid" "$path"
+    done < "$FM_FAKE_LSOF_CWD_MAP"
+    exit 0
+    ;;
+esac
+exit 1
+SH
+  chmod +x "$case_dir/fakebin/lsof"
+}
+
+# treehouse stub that appends every return to <case-dir>/treehouse.log.
+add_return_logging_treehouse() {
+  local case_dir=$1
+  : > "$case_dir/treehouse.log"
+  cat > "$case_dir/fakebin/treehouse" <<SH
+#!/usr/bin/env bash
+if [ "\${1:-}" = return ]; then
+  printf '%s\n' "\$*" >> "$case_dir/treehouse.log"
+fi
+exit 0
+SH
+  chmod +x "$case_dir/fakebin/treehouse"
+}
+
+# Make a step that runs AFTER the pool return fail, without touching the return
+# itself: an unreadable grok turn-end token stops teardown at its own removal
+# step, which is exactly where the observed incident stopped (a refused pane
+# close after a successful return).
+break_step_after_worktree_return() {
+  local case_dir=$1
+  : > "$case_dir/state/task-x1.grok-turnend-token"
+}
+
+count_returns() {  # <case-dir>
+  local case_dir=$1
+  [ -f "$case_dir/treehouse.log" ] || { printf '0\n'; return 0; }
+  grep -c . "$case_dir/treehouse.log" || true
+}
+
+test_ordinary_teardown_reaps_and_returns_its_own_worktree() {
+  local case_dir rc pid wt_real
+  case_dir=$(make_case own-worktree-return)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  add_return_logging_treehouse "$case_dir"
+  add_lsof_cwd_map "$case_dir"
+  wt_real=$(cd "$case_dir/wt" && pwd -P)
+  ( cd "$case_dir/wt" && exec sleep 300 ) &
+  pid=$!
+  disown
+  printf '%s\t%s\n' "$pid" "$wt_real" > "$case_dir/lsof-map"
+  sleep 0.3
+  kill -0 "$pid" 2>/dev/null || fail "own-worktree-return: setup sleeper did not start"
+
+  rc=0
+  FM_FAKE_LSOF_CWD_MAP="$case_dir/lsof-map" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "own-worktree-return: teardown should succeed for its own worktree"
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -KILL "$pid" 2>/dev/null || true
+    fail "own-worktree-return: the task's own leaked process survived teardown"
+  fi
+  assert_grep "$case_dir/wt" "$case_dir/treehouse.log" \
+    "own-worktree-return: teardown did not return its own worktree to the pool"
+  assert_absent "$case_dir/state/task-x1.meta" \
+    "own-worktree-return: a completed teardown left the task record behind"
+  pass "an ordinary teardown still reaps and returns the worktree that is its own"
+}
+
+test_rerun_after_partial_failure_refuses_a_reassigned_worktree() {
+  local case_dir rc pid wt_real returns_after_first
+  case_dir=$(make_case reassigned-worktree-refusal)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  add_return_logging_treehouse "$case_dir"
+  add_lsof_cwd_map "$case_dir"
+  break_step_after_worktree_return "$case_dir"
+
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/first.stdout" 2> "$case_dir/first.stderr" || rc=$?
+  [ "$rc" -ne 0 ] || fail "reassigned-worktree-refusal: the staged post-return failure did not stop teardown"
+  assert_present "$case_dir/state/task-x1.meta" \
+    "reassigned-worktree-refusal: the partial failure discarded the task record"
+  returns_after_first=$(count_returns "$case_dir")
+  [ "$returns_after_first" = 1 ] \
+    || fail "reassigned-worktree-refusal: expected exactly one pool return before the rerun, saw $returns_after_first"
+
+  # The pool hands the freed slot to the next task, which starts working in it.
+  # Drop this task's own returned-worktree record so the rerun has to rely on
+  # the ownership check alone, as it must for any record that did not converge.
+  grep -v '^worktree_returned=' "$case_dir/state/task-x1.meta" > "$case_dir/meta.tmp"
+  mv "$case_dir/meta.tmp" "$case_dir/state/task-x1.meta"
+  fm_write_meta "$case_dir/state/task-x2.meta" \
+    "window=firstmate:fm-task-x2" \
+    "endpoint_task_id=task-x2" \
+    "worktree=$case_dir/wt" \
+    "project=$case_dir/project" \
+    "kind=ship" \
+    "mode=no-mistakes"
+  git -C "$case_dir/wt" checkout -q -b fm/task-x2
+  wt_real=$(cd "$case_dir/wt" && pwd -P)
+  ( cd "$case_dir/wt" && exec sleep 300 ) &
+  pid=$!
+  disown
+  printf '%s\t%s\n' "$pid" "$wt_real" > "$case_dir/lsof-map"
+  sleep 0.3
+  kill -0 "$pid" 2>/dev/null || fail "reassigned-worktree-refusal: the successor task's process did not start"
+
+  rc=0
+  FM_FAKE_LSOF_CWD_MAP="$case_dir/lsof-map" \
+    run_teardown "$case_dir" > "$case_dir/second.stdout" 2> "$case_dir/second.stderr" || rc=$?
+
+  if [ "$rc" -eq 0 ]; then
+    kill -KILL "$pid" 2>/dev/null || true
+    fail "reassigned-worktree-refusal: the rerun tore down a worktree another task had acquired"
+  fi
+  if ! kill -0 "$pid" 2>/dev/null; then
+    fail "reassigned-worktree-refusal: the rerun killed the successor task's process"
+  fi
+  kill -KILL "$pid" 2>/dev/null || true
+  assert_grep "REFUSED" "$case_dir/second.stderr" \
+    "reassigned-worktree-refusal: the rerun did not refuse loudly"
+  assert_grep "task-x2" "$case_dir/second.stderr" \
+    "reassigned-worktree-refusal: the refusal did not name the task the worktree belongs to"
+  [ "$(count_returns "$case_dir")" = 1 ] \
+    || fail "reassigned-worktree-refusal: the rerun returned the reassigned worktree again"
+  assert_present "$case_dir/wt" "reassigned-worktree-refusal: the rerun removed the reassigned worktree"
+  assert_present "$case_dir/state/task-x1.meta" \
+    "reassigned-worktree-refusal: the refusal discarded this task's record"
+  assert_present "$case_dir/state/task-x2.meta" \
+    "reassigned-worktree-refusal: the refusal discarded the successor task's record"
+  git -C "$case_dir/project" rev-parse --verify -q fm/task-x2 >/dev/null \
+    || fail "reassigned-worktree-refusal: the refusal deleted the successor task's branch"
+
+  # The successor's own worktree marker is the stronger signal and must refuse on
+  # its own, with nothing but that task's record left to corroborate it.
+  grep -v '^worktree=' "$case_dir/state/task-x2.meta" > "$case_dir/x2.tmp"
+  mv "$case_dir/x2.tmp" "$case_dir/state/task-x2.meta"
+  printf 'task=task-x2\nstate=%s\n' "$(cd "$case_dir/state" && pwd -P)" \
+    > "$case_dir/wt/.fm-task-owner"
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/third.stdout" 2> "$case_dir/third.stderr" || rc=$?
+  [ "$rc" -ne 0 ] || fail "reassigned-worktree-refusal: a worktree marked as another task's was torn down"
+  assert_grep "task-x2" "$case_dir/third.stderr" \
+    "reassigned-worktree-refusal: the marked-worktree refusal did not name its owner"
+  [ "$(count_returns "$case_dir")" = 1 ] \
+    || fail "reassigned-worktree-refusal: the marked worktree was returned anyway"
+  pass "a rerun after a post-return failure refuses loudly instead of tearing down a reassigned worktree"
+}
+
+test_rerun_after_reconciled_records_completes_cleanly() {
+  local case_dir rc
+  case_dir=$(make_case reconciled-rerun)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  add_return_logging_treehouse "$case_dir"
+  add_lsof_cwd_map "$case_dir"
+  break_step_after_worktree_return "$case_dir"
+
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/first.stdout" 2> "$case_dir/first.stderr" || rc=$?
+  [ "$rc" -ne 0 ] || fail "reconciled-rerun: the staged post-return failure did not stop teardown"
+  [ "$(count_returns "$case_dir")" = 1 ] \
+    || fail "reconciled-rerun: the first run did not return the worktree exactly once"
+
+  # Reconcile the record that stopped the first run; the worktree steps are
+  # already recorded as done and must not run a second time.
+  rm -f "$case_dir/state/task-x1.grok-turnend-token"
+  rc=0
+  run_teardown "$case_dir" > "$case_dir/second.stdout" 2> "$case_dir/second.stderr" || rc=$?
+
+  expect_code 0 "$rc" "reconciled-rerun: the reconciled rerun should complete"
+  [ "$(count_returns "$case_dir")" = 1 ] \
+    || fail "reconciled-rerun: the rerun returned the already-returned worktree again"
+  assert_absent "$case_dir/state/task-x1.meta" \
+    "reconciled-rerun: the completed rerun left the task record behind"
+  assert_grep "already returned" "$case_dir/second.stderr" \
+    "reconciled-rerun: the rerun did not report skipping the completed worktree steps"
+  pass "a rerun after the records are reconciled completes without repeating the worktree steps"
+}
+
 test_local_only_fork_remote_allows
+test_ordinary_teardown_reaps_and_returns_its_own_worktree
+test_rerun_after_partial_failure_refuses_a_reassigned_worktree
+test_rerun_after_reconciled_records_completes_cleanly
 test_teardown_prompts_tasks_axi_done_when_compatible
 test_teardown_manual_backend_prompts_hand_edit_even_when_tasks_axi_present
 test_local_only_truly_unpushed_refuses

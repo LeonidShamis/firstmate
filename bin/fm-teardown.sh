@@ -22,6 +22,33 @@
 # A gh lookup error falls back to the content check; if that is also inconclusive,
 # teardown refuses rather than risk discarding unlanded work.
 # Uncommitted changes are never landed.
+# WORKTREE OWNERSHIP: before killing any process in, resetting, or returning the
+# recorded worktree, teardown proves the path is still bound to THIS task, because a
+# pool slot returned by an earlier partial run can already have been handed to
+# another task. It refuses loudly - naming the other task when it can be read - when
+# the worktree's .fm-task-owner marker (written at every spawn by bin/fm-spawn.sh,
+# which owns its fields) names a different task or a different state directory. That
+# marker is rewritten by every spawn and removed with the task's other worktree files
+# before the return, so it names whichever task took the worktree last and settles
+# ownership on its own, including against a task record whose own worktree= line is
+# merely stale. It speaks only for a task that still has a record where the marker
+# says that task's records live, so a leftover from a finished task never wedges an
+# unrelated teardown. A worktree with no live marker (a task spawned before the
+# marker existed) refuses instead when another live record in this home claims the
+# same path or when it sits on another live task's fm/<id> branch, accepts its own
+# fm/<task-id> branch, and otherwise proceeds on the recorded path with a warning.
+# The refusal is inert: it forces, stashes, and discards nothing, and rerunning
+# teardown once the records are reconciled completes normally. --force discards THIS
+# task's work, never another task's, so the ownership check applies to it too.
+# RERUN CONVERGENCE: a pool return or Orca worktree removal that succeeded is recorded
+# as worktree_returned=1 in state/<id>.meta - a field this script owns and writes; a
+# rerun after a later failure (pane close, presentation cleanup) then skips every
+# worktree step instead of repeating it against whatever holds that path next, reaping
+# only the task's own temp root. A successful teardown removes the metadata, so the
+# field is only ever visible between a partial failure and its rerun; bin/fm-spawn.sh
+# drops it when it rebinds a worktree on relaunch. When the return succeeded but the
+# record could not be written, teardown fails loudly rather than leaving the two
+# records disagreeing silently.
 # local-only projects additionally accept work merged into the local default
 # branch (firstmate performs that merge after configured approval) as a fallback
 # for the common case where there is no remote at all.
@@ -119,7 +146,10 @@
 #     process group, so it survives reparented to init (observed 2026-08-03:
 #     two `go test` binaries, deadlines blown past by ~100x, pinning CPU for
 #     hours with no live task meta to attribute them to once teardown had
-#     already removed it). reap_task_worktree_processes finds every process
+#     already removed it). It runs only once the worktree ownership check above
+#     has passed, so it can never reach a pool slot already reassigned to
+#     another task; on a converged rerun it is limited to the task's own
+#     tasktmp. reap_task_worktree_processes finds every process
 #     whose CURRENT WORKING DIRECTORY is this task's own worktree or tasktmp
 #     root via `lsof -a -d cwd` (cheap: bounded by process count, not by
 #     walking the worktree's file tree) and sends TERM, then KILL after a short
@@ -1374,6 +1404,119 @@ teardown_treehouse_return() {
   return 1
 }
 
+# Worktree ownership (see script header). The recorded worktree path stays this
+# task's only while the records still bind it here: a pool slot returned by an
+# earlier partial teardown can already have been handed to another task, and
+# killing processes in it or returning it again would destroy that task's agent
+# and branch. Refuses loudly, naming the other task where it can be read, and
+# never forces, stashes, or discards anything.
+FM_TASK_OWNER_MARKER=.fm-task-owner
+
+# One key from the worktree's task-owner marker, written by bin/fm-spawn.sh.
+worktree_owner_marker_value() {  # <dir> <key>
+  local dir=$1 key=$2 marker
+  marker="$dir/$FM_TASK_OWNER_MARKER"
+  [ -f "$marker" ] && [ ! -L "$marker" ] || return 1
+  grep "^$key=" "$marker" 2>/dev/null | tail -1 | cut -d= -f2-
+}
+
+# The other task in THIS home whose own record still claims <canonical-dir>, if
+# any. A task whose worktree was already returned no longer claims it.
+worktree_claimed_by_other_task() {  # <canonical-dir>
+  local want=$1 meta other other_wt other_canon
+  for meta in "$STATE"/*.meta; do
+    [ -f "$meta" ] && [ ! -L "$meta" ] || continue
+    other=${meta##*/}
+    other=${other%.meta}
+    [ "$other" != "$ID" ] || continue
+    [ "$(fm_meta_get "$meta" worktree_returned)" != 1 ] || continue
+    other_wt=$(fm_meta_get "$meta" worktree)
+    [ -n "$other_wt" ] || continue
+    other_canon=$(canonical_existing_dir "$other_wt") || other_canon=$other_wt
+    [ "$other_canon" = "$want" ] || continue
+    printf '%s\n' "$other"
+    return 0
+  done
+  return 1
+}
+
+report_reassigned_worktree() {  # <evidence>
+  echo "REFUSED: worktree $WT is no longer task $ID's: $1." >&2
+  echo "Killing its processes or returning it would destroy another task's work." >&2
+  echo "Reconcile the task records first (clear the stale worktree binding on $ID), then rerun teardown; nothing was killed, returned, or discarded." >&2
+}
+
+# A marker only speaks for a task that still has a record where the marker says
+# that task's records live. A leftover from a task that has already finished is
+# not a claim on the worktree, and must never wedge an unrelated teardown.
+marker_owner_still_recorded() {  # <task> <state-dir>
+  local task=$1 dir=$2 meta
+  fm_task_id_path_safe "$task" || return 1
+  [ -n "$dir" ] || dir=$STATE
+  case "$dir" in /*) ;; *) return 1 ;; esac
+  meta="$dir/$task.meta"
+  [ -f "$meta" ] && [ ! -L "$meta" ]
+}
+
+assert_worktree_owned_by_task() {
+  local canon owner owner_state other branch state_canon
+  [ -n "$WT" ] || return 0
+  canon=$(canonical_existing_dir "$WT") || return 0
+  # The marker is both the most precise and the most current signal: every spawn
+  # rewrites it, so it names whichever task took this worktree LAST. It therefore
+  # settles ownership on its own, including against a task record whose own
+  # worktree= line is simply stale.
+  owner=$(worktree_owner_marker_value "$WT" task) || owner=
+  owner_state=$(worktree_owner_marker_value "$WT" state) || owner_state=
+  state_canon=$(canonical_existing_dir "$STATE") || state_canon=$STATE
+  if [ -n "$owner" ]; then
+    if [ "$owner" = "$ID" ] \
+       && { [ -z "$owner_state" ] || [ "$owner_state" = "$state_canon" ]; }; then
+      return 0
+    fi
+    if marker_owner_still_recorded "$owner" "$owner_state"; then
+      report_reassigned_worktree "it is marked as task $owner's${owner_state:+ in $owner_state}"
+      return 1
+    fi
+  fi
+  # No marker, or one left behind by a task that has already finished. Another
+  # live record in this home claiming the same path is then the strongest
+  # remaining evidence.
+  if other=$(worktree_claimed_by_other_task "$canon"); then
+    report_reassigned_worktree "task $other's own record claims the same worktree"
+    return 1
+  fi
+  # Otherwise fall back to the branch, which the ship brief names fm/<task-id>.
+  branch=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
+  [ "$branch" != "fm/$ID" ] || return 0
+  case "$branch" in
+    fm/*)
+      other=${branch#fm/}
+      if [ "$other" != "$ID" ] && [ -f "$STATE/$other.meta" ] && [ ! -L "$STATE/$other.meta" ]; then
+        report_reassigned_worktree "it is on task $other's branch $branch"
+        return 1
+      fi
+      ;;
+  esac
+  echo "warning: worktree $WT carries no task-owner marker for $ID and is on branch $branch; proceeding on the recorded path alone" >&2
+  return 0
+}
+
+# Converge the partial-failure path (see script header): once the worktree has
+# been returned or removed, this task no longer owns it, so record that in the
+# task's own metadata and let a rerun skip every worktree step instead of
+# repeating them against whatever holds that path next.
+record_worktree_returned() {
+  local tmp
+  [ -f "$META" ] && [ ! -L "$META" ] || return 1
+  tmp=$(mktemp "$STATE/.$ID.meta.returned.XXXXXX") || return 1
+  # cp -p first so the rewritten record keeps the original's permissions.
+  cp -p -- "$META" "$tmp" || { rm -f "$tmp"; return 1; }
+  awk '!/^worktree_returned=/ { print } END { print "worktree_returned=1" }' "$META" > "$tmp" \
+    || { rm -f "$tmp"; return 1; }
+  mv -f -- "$tmp" "$META" || { rm -f "$tmp"; return 1; }
+}
+
 validate_worktree_teardown_safety() {
   local dirty_raw dirty unpushed_raw unpushed DEFAULT unmerged_raw unmerged branch
   [ -d "$WT" ] || return 0
@@ -1390,7 +1533,7 @@ validate_worktree_teardown_safety() {
     echo "Restore the git index state, or get the captain's explicit OK to discard, then --force." >&2
     return 1
   fi
-  dirty=$(printf '%s\n' "$dirty_raw" | grep -vE '^\?\? (\.claude/|\.fm-(grok|kimi)-turnend$)' | head -1 || true)
+  dirty=$(printf '%s\n' "$dirty_raw" | grep -vE '^\?\? (\.claude/|\.fm-task-owner$|\.fm-(grok|kimi)-turnend$)' | head -1 || true)
 
   if ! unpushed_raw=$(git -C "$WT" log --oneline HEAD --not --remotes -- 2>/dev/null); then
     if worktree_safety_blocked_by_lock "commits not on a remote"; then
@@ -2616,7 +2759,23 @@ if [ -n "$X_REQUEST" ]; then
   echo "warning: task $ID still carries an unreconciled Relay request link ($X_REQUEST) on its task record." >&2
 fi
 
-if [ "$BACKEND" = orca ] && [ "$KIND" != scout ] && [ "$KIND" != secondmate ] && [ "$FORCE" != "--force" ]; then
+# Worktree ownership and re-run convergence (see script header). A task whose
+# worktree was already returned owns no worktree any more, so every worktree
+# step below is skipped; otherwise the recorded path must still be provably
+# this task's before anything in it is killed, reset, or returned. --force
+# discards THIS task's work, never another task's, so the check applies to it
+# too.
+WORKTREE_STEPS=1
+if [ "$KIND" = secondmate ]; then
+  :
+elif [ "$(fm_meta_get "$META" worktree_returned)" = 1 ]; then
+  WORKTREE_STEPS=0
+  echo "teardown: worktree ${WT:-<unrecorded>} was already returned for $ID by an earlier run; skipping every worktree step" >&2
+else
+  assert_worktree_owned_by_task || exit 1
+fi
+
+if [ "$WORKTREE_STEPS" = 1 ] && [ "$BACKEND" = orca ] && [ "$KIND" != scout ] && [ "$KIND" != secondmate ] && [ "$FORCE" != "--force" ]; then
   if ! inspectable_git_worktree "$WT"; then
     echo "REFUSED: Orca ship task $ID has no inspectable git worktree at ${WT:-<missing>}." >&2
     echo "Cannot verify dirty or unlanded work; restore the worktree path or get explicit OK to discard, then --force." >&2
@@ -2626,7 +2785,7 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != scout ] && [ "$KIND" != secondmate ] &&
   ORCA_PATH_MATCH_VERIFIED=1
 fi
 
-if [ -d "$WT" ] && [ "$FORCE" != "--force" ]; then
+if [ "$WORKTREE_STEPS" = 1 ] && [ -d "$WT" ] && [ "$FORCE" != "--force" ]; then
   if validate_worktree_teardown_safety; then
     :
   else
@@ -2648,8 +2807,13 @@ fi
 # dedicated process-event and firstmate-home removal machinery further below,
 # not by task-worktree cleanup.
 if [ "$KIND" != secondmate ]; then
-  conclude_task_no_mistakes_run "$WT"
-  reap_task_worktree_processes worktree "$WT" "$TASK_TMP"
+  if [ "$WORKTREE_STEPS" = 1 ]; then
+    conclude_task_no_mistakes_run "$WT"
+    reap_task_worktree_processes worktree "$WT" "$TASK_TMP"
+  else
+    # The worktree is no longer this task's; only its own per-task temp root is.
+    reap_task_worktree_processes tasktmp "$TASK_TMP"
+  fi
 fi
 
 # Fix 3 (see script header): sweep remote job workers abandoned by an already
@@ -2674,24 +2838,32 @@ fi
 
 # Best-effort: drop the local task branch so the shared repo does not accumulate refs.
 if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
-  if [ "$ORCA_PATH_MATCH_VERIFIED" != 1 ]; then
-    require_orca_worktree_path_match_if_present "$ORCA_WORKTREE_ID" "$WT" || exit 1
-    ORCA_PATH_MATCH_VERIFIED=1
-  fi
-  if [ -d "$WT" ]; then
-    branch=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
-    if [ "$branch" != "HEAD" ]; then
-      if git -C "$WT" checkout --detach -q 2>/dev/null; then
-        git -C "$WT" branch -D "$branch" >/dev/null 2>&1 || true
-      fi
+  if [ "$WORKTREE_STEPS" = 1 ]; then
+    if [ "$ORCA_PATH_MATCH_VERIFIED" != 1 ]; then
+      require_orca_worktree_path_match_if_present "$ORCA_WORKTREE_ID" "$WT" || exit 1
+      ORCA_PATH_MATCH_VERIFIED=1
     fi
-    rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
-      "$WT/.opencode/plugins/fm-busy-state.js" \
-      "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
+    if [ -d "$WT" ]; then
+      branch=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
+      if [ "$branch" != "HEAD" ]; then
+        if git -C "$WT" checkout --detach -q 2>/dev/null; then
+          git -C "$WT" branch -D "$branch" >/dev/null 2>&1 || true
+        fi
+      fi
+      rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
+        "$WT/.opencode/plugins/fm-busy-state.js" \
+        "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend" "$WT/.fm-task-owner"
+    fi
   fi
   [ -z "$T_ORCA" ] || fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
-  fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID"
-elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
+  if [ "$WORKTREE_STEPS" = 1 ]; then
+    fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID"
+    record_worktree_returned || {
+      echo "error: Orca worktree $WT was removed for $ID but that could not be recorded; reconcile the task record before rerunning teardown" >&2
+      exit 1
+    }
+  fi
+elif [ "$WORKTREE_STEPS" = 1 ] && [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
   branch=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
   if [ "$branch" != "HEAD" ]; then
     if git -C "$WT" checkout --detach -q 2>/dev/null; then
@@ -2699,8 +2871,12 @@ elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
     fi
   fi
   # Remove our hook file so a reused pool worktree cannot fire signals for a dead task.
+  # The ownership marker goes with them: this task's claim on the worktree ends
+  # here, and the return below can only free the slot for another task once it
+  # has succeeded. A failed return leaves the slot leased to this task, so the
+  # lost marker cannot mislead a rerun.
   rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" \
-    "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend"
+    "$WT/.fm-grok-turnend" "$WT/.fm-kimi-turnend" "$WT/.fm-task-owner"
   # Kills remaining processes in the worktree (including the agent), resets, returns
   # to pool. treehouse resolves the pool from the working directory, so run it from
   # the project. teardown_treehouse_return tolerates transient and stale git locks
@@ -2711,6 +2887,10 @@ elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
   fi
   teardown_treehouse_return "$WT" "$PROJ" "worktree" "$post_lock_cleanup_check" || {
     echo "error: treehouse return failed for worktree $WT; teardown aborted" >&2
+    exit 1
+  }
+  record_worktree_returned || {
+    echo "error: worktree $WT was returned to the pool for $ID but that could not be recorded; reconcile the task record before rerunning teardown" >&2
     exit 1
   }
 fi

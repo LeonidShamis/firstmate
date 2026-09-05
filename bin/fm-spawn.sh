@@ -170,6 +170,13 @@
 #     __OPINPUT__   absolute path to the canonical operational-input encoder
 #     __WORKTREE__  absolute path to the task worktree
 #     __CURSORBIN__ resolved, cursor-verified executable for a cursor launch
+# Every non-secondmate spawn writes a gitignored .fm-task-owner marker into the task
+# worktree, naming this task id and the state directory holding its records
+# ("task=<id>" and "state=<canonical state dir>"). It is the harness- and
+# backend-independent proof of which task the worktree currently belongs to, rewritten
+# on every spawn (a relaunch included) so the newest owner always wins.
+# bin/fm-teardown.sh reads it before killing processes in, or returning, a recorded
+# worktree, so a pool slot already handed to another task is never torn down as this one's.
 # Verified per-harness turn-end hooks are installed automatically where enabled; some live outside the worktree.
 # Kimi uses one surgically installed Firstmate region in $HOME/.kimi-code/config.toml,
 # a firstmate-owned global hook and registry, and a gitignored per-task pointer.
@@ -2356,6 +2363,15 @@ exclude_path() {
   mkdir -p "$(dirname "$EXCL")"
   grep -qxF "$rel" "$EXCL" 2>/dev/null || echo "$rel" >> "$EXCL"
 }
+if [ "$KIND" != secondmate ] && [ -d "$WT" ]; then
+  # Task-owner marker (see script header): the durable proof that this exact
+  # worktree belongs to this task, written before any agent starts in it.
+  printf 'task=%s\nstate=%s\n' "$ID" "$STATE_REAL" > "$WT/.fm-task-owner" || {
+    echo "error: could not record the task-owner marker in $WT" >&2
+    exit 1
+  }
+  exclude_path '.fm-task-owner'
+fi
 if [ "$RELAUNCH" -eq 1 ]; then
   # Retire the previous incarnation's per-task harness wiring before arming the
   # new one. Without this, a harness switch would leave the old adapter's hook
@@ -2702,7 +2718,7 @@ fi
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
+      split("window endpoint_task_id worktree worktree_returned project harness kind mode yolo tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
