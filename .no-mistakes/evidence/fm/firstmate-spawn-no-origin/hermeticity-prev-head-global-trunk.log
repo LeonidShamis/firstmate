@@ -1,0 +1,11 @@
+## previous head 4744cd3 test file, host global init.defaultBranch=trunk (expect r14 to fail)
+ok - a stale pooled worktree refreshes to current origin/main before a crew branch is created
+ok - a stale pooled worktree resolves and refreshes a non-main default branch
+ok - direct-PR ships and scouts both refresh stale pooled worktrees before launch
+ok - a dirty pooled worktree is refused without discarding its local work
+ok - an unresolved remote default branch refuses the pooled worktree
+ok - an unreachable origin refuses a potentially stale pooled worktree
+ok - a remote-less project refreshes its pooled worktree to the local default branch tip
+ok - a dirty pooled worktree in a remote-less project is still refused without discarding its work
+not ok - spawn succeeded despite an unresolvable local default branch
+exit=1

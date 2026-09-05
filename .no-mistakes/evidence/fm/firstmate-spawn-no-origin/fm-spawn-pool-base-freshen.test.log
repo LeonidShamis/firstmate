@@ -1,33 +1,33 @@
-# observed spawn: spawned pool-current-base-r1 harness=codex kind=ship mode=no-mistakes yolo=off window=firstmate:fm-pool-current-base-r1 worktree=/tmp/fm-spawn-pool-base-freshen.Xm104G/current-base/pool
-# observed base: HEAD=8553a6982603fbcb694a451de88e9abbd7bf2994 origin/main=8553a6982603fbcb694a451de88e9abbd7bf2994 advanced-main=must survive a newly spawned branch
+# observed spawn: spawned pool-current-base-r1 harness=codex kind=ship mode=no-mistakes yolo=off window=firstmate:fm-pool-current-base-r1 worktree=/tmp/fm-spawn-pool-base-freshen.264wC6/current-base/pool
+# observed base: HEAD=a9bd22784ddb6d7459637cf39d482079067cb305 origin/main=a9bd22784ddb6d7459637cf39d482079067cb305 advanced-main=must survive a newly spawned branch
 ok - a stale pooled worktree refreshes to current origin/main before a crew branch is created
 ok - a stale pooled worktree resolves and refreshes a non-main default branch
-# observed direct-pr spawn: spawned pool-direct-pr-r3 harness=codex kind=ship mode=direct-PR yolo=off window=firstmate:fm-pool-direct-pr-r3 worktree=/tmp/fm-spawn-pool-base-freshen.Xm104G/direct-pr/pool
-# observed scout spawn: spawned pool-scout-r3 harness=codex kind=scout window=firstmate:fm-pool-scout-r3 worktree=/tmp/fm-spawn-pool-base-freshen.Xm104G/scout/pool
+# observed direct-pr spawn: spawned pool-direct-pr-r3 harness=codex kind=ship mode=direct-PR yolo=off window=firstmate:fm-pool-direct-pr-r3 worktree=/tmp/fm-spawn-pool-base-freshen.264wC6/direct-pr/pool
+# observed scout spawn: spawned pool-scout-r3 harness=codex kind=scout window=firstmate:fm-pool-scout-r3 worktree=/tmp/fm-spawn-pool-base-freshen.264wC6/scout/pool
 ok - direct-PR ships and scouts both refresh stale pooled worktrees before launch
-# observed dirty refusal: error: pooled worktree '/tmp/fm-spawn-pool-base-freshen.Xm104G/dirty-refusal/pool' is not clean; refusing to discard uncommitted work while refreshing its base; preserved=keep this local work
+# observed dirty refusal: error: pooled worktree '/tmp/fm-spawn-pool-base-freshen.264wC6/dirty-refusal/pool' is not clean; refusing to discard uncommitted work while refreshing its base; preserved=keep this local work
 ok - a dirty pooled worktree is refused without discarding its local work
-# observed unresolved-default refusal: error: could not resolve origin's current default branch for pooled worktree '/tmp/fm-spawn-pool-base-freshen.Xm104G/unresolved-default/pool'; refusing to launch from a potentially stale base
+# observed unresolved-default refusal: error: could not resolve origin's current default branch for pooled worktree '/tmp/fm-spawn-pool-base-freshen.264wC6/unresolved-default/pool'; refusing to launch from a potentially stale base
 ok - an unresolved remote default branch refuses the pooled worktree
-# observed unreachable-origin refusal: error: could not fetch origin for pooled worktree '/tmp/fm-spawn-pool-base-freshen.Xm104G/unreachable-origin/pool'; refusing to launch from a potentially stale base
+# observed unreachable-origin refusal: error: could not fetch origin for pooled worktree '/tmp/fm-spawn-pool-base-freshen.264wC6/unreachable-origin/pool'; refusing to launch from a potentially stale base
 ok - an unreachable origin refuses a potentially stale pooled worktree
-# observed remote-less spawn: spawned pool-local-only-base-r12 harness=codex kind=ship mode=local-only yolo=off window=firstmate:fm-pool-local-only-base-r12 worktree=/tmp/fm-spawn-pool-base-freshen.Xm104G/local-only-base/pool
-# observed base: HEAD=8890a7e7c884371f6e926e838fe617b81bd7cf13 refs/heads/trunk=8890a7e7c884371f6e926e838fe617b81bd7cf13
+# observed remote-less spawn: spawned pool-local-only-base-r12 harness=codex kind=ship mode=local-only yolo=off window=firstmate:fm-pool-local-only-base-r12 worktree=/tmp/fm-spawn-pool-base-freshen.264wC6/local-only-base/pool
+# observed base: HEAD=4cb19592c186b7ba48bb02bdd2122e6db0fd39e9 refs/heads/trunk=4cb19592c186b7ba48bb02bdd2122e6db0fd39e9
 ok - a remote-less project refreshes its pooled worktree to the local default branch tip
 ok - a dirty pooled worktree in a remote-less project is still refused without discarding its work
-# observed unresolvable-local-default refusal: error: could not determine the local default branch for pooled worktree '/tmp/fm-spawn-pool-base-freshen.Xm104G/local-only-unresolved/pool', which has no remote; refusing to launch from a potentially stale base
+# observed unresolvable-local-default refusal: error: could not determine the local default branch for pooled worktree '/tmp/fm-spawn-pool-base-freshen.264wC6/local-only-unresolved/pool', which has no remote; refusing to launch from a potentially stale base
 ok - an unresolvable local default branch refuses a remote-less pooled worktree
-# observed feature-checkout spawn: spawned pool-local-only-feature-checkout-r15 harness=codex kind=ship mode=local-only yolo=off window=firstmate:fm-pool-local-only-feature-checkout-r15 worktree=/tmp/fm-spawn-pool-base-freshen.Xm104G/local-only-feature-checkout/pool
-# observed base: HEAD=6729658d7d3014d25b58482ee3a105b393a6139f refs/heads/main=6729658d7d3014d25b58482ee3a105b393a6139f feature=d3ed23caebabd80b68bbbb5335796ce3975fe1d2
+# observed feature-checkout spawn: spawned pool-local-only-feature-checkout-r15 harness=codex kind=ship mode=local-only yolo=off window=firstmate:fm-pool-local-only-feature-checkout-r15 worktree=/tmp/fm-spawn-pool-base-freshen.264wC6/local-only-feature-checkout/pool
+# observed base: HEAD=5b353daa3c16ea36ec3e64fb858e30954d92ba90 refs/heads/main=5b353daa3c16ea36ec3e64fb858e30954d92ba90 feature=4a9cbd660e5cfffb61d0204d26ec488f76ff337f
 ok - a remote-less project launches from the default branch even when the checkout is on a feature branch
-# observed non-origin-remote refusal: error: could not fetch origin for pooled worktree '/tmp/fm-spawn-pool-base-freshen.Xm104G/upstream-only/pool'; refusing to launch from a potentially stale base
+# observed non-origin-remote refusal: error: could not fetch origin for pooled worktree '/tmp/fm-spawn-pool-base-freshen.264wC6/upstream-only/pool'; refusing to launch from a potentially stale base
 ok - a repository whose only remote is not origin is still refused without fetching
-# observed unrecognised-checkout-branch refusal: error: could not determine the local default branch for pooled worktree '/tmp/fm-spawn-pool-base-freshen.Xm104G/local-only-unrecognised-head/pool', which has no remote; refusing to launch from a potentially stale base
+# observed unrecognised-checkout-branch refusal: error: could not determine the local default branch for pooled worktree '/tmp/fm-spawn-pool-base-freshen.264wC6/local-only-unrecognised-head/pool', which has no remote; refusing to launch from a potentially stale base
 ok - a remote-less checkout on a branch nothing recognises as the default is refused, not promoted
-# observed configured-default spawn: spawned pool-local-only-configured-default-r18 harness=codex kind=ship mode=local-only yolo=off window=firstmate:fm-pool-local-only-configured-default-r18 worktree=/tmp/fm-spawn-pool-base-freshen.Xm104G/local-only-configured-default/pool
-# observed base: HEAD=0d1b21cdeaaeafa0154aa124db40150ccca82e69 refs/heads/trunk=0d1b21cdeaaeafa0154aa124db40150ccca82e69 feature=7e6ed66af72ab4d7df440d53c2862ba20f8caea1
+# observed configured-default spawn: spawned pool-local-only-configured-default-r18 harness=codex kind=ship mode=local-only yolo=off window=firstmate:fm-pool-local-only-configured-default-r18 worktree=/tmp/fm-spawn-pool-base-freshen.264wC6/local-only-configured-default/pool
+# observed base: HEAD=7db68be4d686c1fc2a04657f4c27dc22e0ad0c3f refs/heads/trunk=7db68be4d686c1fc2a04657f4c27dc22e0ad0c3f feature=06dcdd4963065750af7dfe30f1be85b5a1a725ed
 ok - a remote-less project launches from its configured default branch, not the checked-out feature branch
-# observed stale-pin refusal: error: submodule 'ui' is checked out at f39e2d936401ade8661a6163d8aee176a00c2e6a, but this base records 6397862812cfd77c30d46f2c3ab03fad5e680711
+# observed stale-pin refusal: error: submodule 'ui' is checked out at d0a7d6f79282b02f2af3e0d13c3de546a2b7f8bf, but this base records 3558123dd3538596473d34c75113d67cbb2a5ac3
 ok - two consecutive spawns across a moved submodule pin end in a refusal naming both pins and no remedy
 ok - an unpushed submodule commit keeps the uncommitted-work refusal and survives it
 ok - work inside a submodule is still refused as uncommitted work, not called stale

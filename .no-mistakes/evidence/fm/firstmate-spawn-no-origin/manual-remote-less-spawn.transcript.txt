@@ -1,0 +1,42 @@
+=== BEFORE: /tmp/fm-base/bin/fm-spawn.sh
+$ git -C project remote            # (prints nothing: no remote at all)
+$ git -C project log --oneline main
+8d30737 advance-main
+b3d3284 initial
+$ git -C pool rev-parse HEAD        # pool slot before spawn (stale base)
+b3d32840b0a69f4d86a4156f7bbccb364e22f86f
+$ fm-spawn.sh local-only-before project --mode local-only --yolo off
+warning: /tmp/fm-manual-remote-less.uRe8xG/BEFORE/home/data/local-only-before/brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches
+notice: local-only-before ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+fatal: 'origin' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+error: could not fetch origin for pooled worktree '/tmp/fm-manual-remote-less.uRe8xG/BEFORE/pool'; refusing to launch from a potentially stale base
+exit=1
+$ git -C pool rev-parse HEAD        # pool slot after spawn
+b3d32840b0a69f4d86a4156f7bbccb364e22f86f
+$ git -C pool branch --show-current
+$ ls pool
+README.md
+
+=== AFTER: <target-tree>/bin/fm-spawn.sh
+$ git -C project remote            # (prints nothing: no remote at all)
+$ git -C project log --oneline main
+b4ea0b3 advance-main
+a43e94b initial
+$ git -C pool rev-parse HEAD        # pool slot before spawn (stale base)
+a43e94b0f02379b08ff3090f7cf6a51dd44bcfd4
+$ fm-spawn.sh local-only-after project --mode local-only --yolo off
+warning: /tmp/fm-manual-remote-less.uRe8xG/AFTER/home/data/local-only-after/brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode local-only - confirm its definition of done matches
+notice: local-only-after ships mode=local-only while the standing posture for project is no-mistakes - less rigor than the captain's standing posture; proceed only on a current explicit captain instruction or an intake judgment you can state
+spawned local-only-after harness=codex kind=ship mode=local-only yolo=off window=firstmate:fm-local-only-after worktree=/tmp/fm-manual-remote-less.uRe8xG/AFTER/pool
+exit=0
+$ git -C pool rev-parse HEAD        # pool slot after spawn
+b4ea0b384a8e308478c1e5c5e99036e4d5979907
+$ git -C pool branch --show-current
+$ ls pool
+README.md
+newer.txt
+

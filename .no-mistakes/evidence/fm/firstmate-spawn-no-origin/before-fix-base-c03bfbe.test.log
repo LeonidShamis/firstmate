@@ -1,0 +1,16 @@
+## new test file run against base commit c03bfbe (before fix)
+# observed spawn: spawned pool-current-base-r1 harness=codex kind=ship mode=no-mistakes yolo=off window=firstmate:fm-pool-current-base-r1 worktree=/tmp/fm-spawn-pool-base-freshen.upKjfw/current-base/pool
+# observed base: HEAD=9809b70cf79f04fdf1b0b13d0e887137a3e91c10 origin/main=9809b70cf79f04fdf1b0b13d0e887137a3e91c10 advanced-main=must survive a newly spawned branch
+ok - a stale pooled worktree refreshes to current origin/main before a crew branch is created
+ok - a stale pooled worktree resolves and refreshes a non-main default branch
+# observed direct-pr spawn: spawned pool-direct-pr-r3 harness=codex kind=ship mode=direct-PR yolo=off window=firstmate:fm-pool-direct-pr-r3 worktree=/tmp/fm-spawn-pool-base-freshen.upKjfw/direct-pr/pool
+# observed scout spawn: spawned pool-scout-r3 harness=codex kind=scout window=firstmate:fm-pool-scout-r3 worktree=/tmp/fm-spawn-pool-base-freshen.upKjfw/scout/pool
+ok - direct-PR ships and scouts both refresh stale pooled worktrees before launch
+# observed dirty refusal: error: pooled worktree '/tmp/fm-spawn-pool-base-freshen.upKjfw/dirty-refusal/pool' is not clean; refusing to discard uncommitted work while refreshing its base; preserved=keep this local work
+ok - a dirty pooled worktree is refused without discarding its local work
+# observed unresolved-default refusal: error: could not resolve origin's current default branch for pooled worktree '/tmp/fm-spawn-pool-base-freshen.upKjfw/unresolved-default/pool'; refusing to launch from a potentially stale base
+ok - an unresolved remote default branch refuses the pooled worktree
+# observed unreachable-origin refusal: error: could not fetch origin for pooled worktree '/tmp/fm-spawn-pool-base-freshen.upKjfw/unreachable-origin/pool'; refusing to launch from a potentially stale base
+ok - an unreachable origin refuses a potentially stale pooled worktree
+not ok - spawn should refresh a stale pooled worktree in a repository with no origin: expected exit 0, got 1
+exit=1
