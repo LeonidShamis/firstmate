@@ -47,8 +47,9 @@
 # only the task's own temp root. A successful teardown removes the metadata, so the
 # field is only ever visible between a partial failure and its rerun, and
 # bin/fm-spawn.sh and bin/fm-control.sh refuse a relaunch while it is set, since the
-# task no longer holds that worktree. An Orca removal that fails is reported and
-# leaves the record unmarked, so a rerun retries the removal rather than skipping it.
+# task no longer holds that worktree. An Orca removal that fails aborts teardown with
+# the record unmarked and retained, so a rerun retries the removal rather than
+# skipping it.
 # When the return succeeded but the record could not be written, teardown fails
 # loudly rather than leaving the two records disagreeing silently.
 # local-only projects additionally accept work merged into the local default
@@ -2865,7 +2866,8 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
         exit 1
       }
     else
-      echo "warning: Orca worktree $WT (${ORCA_WORKTREE_ID:-no id}) was not removed for $ID; the task record keeps its worktree binding so a rerun retries the removal" >&2
+      echo "error: Orca worktree $WT (${ORCA_WORKTREE_ID:-no id}) could not be removed for $ID; retaining the task record so a rerun retries the removal" >&2
+      exit 1
     fi
   fi
 elif [ "$WORKTREE_STEPS" = 1 ] && [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
