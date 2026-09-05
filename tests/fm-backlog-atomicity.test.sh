@@ -35,6 +35,15 @@ TEARDOWN="$ROOT/bin/fm-teardown.sh"
 BOOTSTRAP="$ROOT/bin/fm-bootstrap.sh"
 TMP_ROOT=$(fm_test_tmproot fm-backlog-atomicity)
 
+# This suite's own helpers drive markdown backlogs through explicit `--file`
+# paths, so they must not inherit an unrelated project's tasks-axi backend
+# from the working directory - running from the repository root would resolve
+# its .tasks.toml instead. ROOT and TMP_ROOT are already absolute, and the
+# scripts under test address their own home explicitly, so leaving the
+# repository is safe. The environment is deliberately left alone: an exported
+# TASKS_AXI_BACKEND would outrank each case's own .tasks.toml fixture.
+cd "$TMP_ROOT" || exit 1
+
 command -v tasks-axi >/dev/null 2>&1 || {
   printf 'ok - skipped (tasks-axi is not installed; the fused transitions are inert without it)\n'
   exit 0
@@ -436,7 +445,10 @@ test_dispatch_moves_the_item_in_flight_in_the_same_run() {
   id=atomic-dispatch-b1
   case_dir=$(make_home dispatch-ok "$id")
   add_item "$case_dir" "$id"
-  cp "$ROOT/.tasks.toml" "$(home_of "$case_dir")/.tasks.toml"
+  # This case asserts the MARKDOWN addressing path, so it seeds the tracked
+  # config pinned to markdown storage rather than following the tracked
+  # default (tests/lib.sh). The beads cases below write their own fixture.
+  fm_test_markdown_tasks_toml "$(home_of "$case_dir")"
   record_tasks_axi_calls "$case_dir"
 
   out=$(run_ship_spawn "$case_dir" "$id") || fail "spawn failed: $out"
