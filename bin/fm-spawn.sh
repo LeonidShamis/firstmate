@@ -136,12 +136,15 @@
 #   git worktree root distinct from the primary project checkout.
 #   Before a fresh ship or scout worker starts, its clean task worktree fetches
 #   origin, resolves the current remote default branch, and resets to its tip.
-#   A repository with no origin remote - which a local-only project is allowed to
-#   be - fetches nothing and resets to the shared checkout's own default branch
-#   instead, read from the common git dir's HEAD and falling back to local main
-#   or master, never assuming a name. An unreachable origin, unresolved remote or
-#   local default branch, or non-clean worktree refuses the spawn rather than
-#   risking a PR based on stale history.
+#   A repository with no remote at all - which a local-only project is allowed
+#   to be - fetches nothing and resets to the shared checkout's own default
+#   branch instead: local main or master when one exists, even while the
+#   checkout itself sits on a feature branch, and otherwise the branch the
+#   common git dir's HEAD names, never assuming a name. A repository whose only
+#   remotes are not named origin keeps the origin rule and is refused when
+#   origin cannot be fetched. An unreachable origin, unresolved remote or local
+#   default branch, or non-clean worktree refuses the spawn rather than risking
+#   a PR based on stale history.
 #   A slot whose only deviation is a stale submodule gitlink is refused by that
 #   same clean check, but is reported as a stale checkout naming each submodule
 #   and both pins; nothing is converged or removed, and no remedy is suggested.
@@ -1797,18 +1800,24 @@ EOF
   printf '%s' "$lines" >&2
 }
 
-# The current base of a slot whose repository has no origin at all. A local-only
-# project is allowed to have no remote, so there is nothing to fetch and no
+# The current base of a slot whose repository has no remote at all. A local-only
+# project is allowed to have none, so there is nothing to fetch and no
 # remote-tracking ref to reset onto; the shared checkout's own default branch is
-# then the newest base that exists. Read it from the common git dir's HEAD, which
-# is the branch the project checkout itself is on, and fall back to the local
-# heads default_branch already knows before giving up - never to a hardcoded
+# then the newest base that exists. Resolve it the way every other sync path
+# does, through default_branch, so a local main or master wins even while the
+# project checkout is stranded on a feature branch - the same rule
+# primary_head_commit follows so a stray branch never becomes the fleet's base.
+# Only when no such branch exists does the common git dir's HEAD, the branch the
+# project checkout itself is on, stand in as the default - never a hardcoded
 # "main", because a repository with no remote is exactly the one whose default
 # branch name nothing else has agreed on. A branch that resolves neither way is
 # unresolvable, and the caller refuses rather than launching from whatever the
 # slot happened to hold.
 local_default_branch() {  # <worktree>
   local worktree=$1 common ref
+  if default_branch "$worktree"; then
+    return 0
+  fi
   common=$(git -C "$worktree" rev-parse --git-common-dir 2>/dev/null) || return 1
   [ -n "$common" ] || return 1
   case $common in
@@ -1816,16 +1825,15 @@ local_default_branch() {  # <worktree>
     *) common="$(cd "$worktree" 2>/dev/null && pwd -P)/$common" ;;
   esac
   ref=$(git --git-dir="$common" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-  if [ -n "$ref" ] && git -C "$worktree" show-ref --verify --quiet "refs/heads/$ref"; then
-    printf '%s\n' "$ref"
-    return 0
-  fi
-  default_branch "$worktree"
+  [ -n "$ref" ] || return 1
+  git -C "$worktree" show-ref --verify --quiet "refs/heads/$ref" || return 1
+  printf '%s\n' "$ref"
 }
 
 freshen_spawn_worktree_base() {  # <worktree>
-  local worktree=$1 default target expected actual status
-  if git -C "$worktree" remote get-url origin >/dev/null 2>&1; then
+  local worktree=$1 remotes default target expected actual status
+  remotes=$(git -C "$worktree" remote 2>/dev/null) || remotes=unknown
+  if [ -n "$remotes" ]; then
     if ! git -C "$worktree" fetch --quiet origin; then
       echo "error: could not fetch origin for pooled worktree '$worktree'; refusing to launch from a potentially stale base" >&2
       return 1
@@ -1845,7 +1853,7 @@ freshen_spawn_worktree_base() {  # <worktree>
     fi
   else
     default=$(local_default_branch "$worktree") || {
-      echo "error: could not determine the local default branch for pooled worktree '$worktree', which has no origin remote; refusing to launch from a potentially stale base" >&2
+      echo "error: could not determine the local default branch for pooled worktree '$worktree', which has no remote; refusing to launch from a potentially stale base" >&2
       return 1
     }
     target="refs/heads/$default"

@@ -259,8 +259,8 @@ make_local_only_case() {  # <name> <id> [default-branch]
   git -C "$project" add advanced-local.txt
   git -C "$project" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm advance-local
 
-  git -C "$project" remote get-url origin >/dev/null 2>&1 \
-    && fail "fixture left an origin remote on a repository that must have none"
+  [ -z "$(git -C "$project" remote)" ] \
+    || fail "fixture left a remote on a repository that must have none"
 
   printf '%s\n' "$case_dir|$home|$project|$pool|$fakebin|$initial|$default"
 }
@@ -335,6 +335,69 @@ test_unresolved_local_default_refuses_pool() {
     printf '# observed unresolvable-local-default refusal: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
   fi
   pass "an unresolvable local default branch refuses a remote-less pooled worktree"
+}
+
+# The shared checkout is the captain's working copy, so it can be sitting on a
+# feature branch when a crewmate spawns. The base is still the default branch,
+# never whatever branch that checkout happens to have out, exactly as the fleet
+# sync follows the default-branch ref rather than the primary's HEAD.
+test_remote_less_pool_follows_default_over_checked_out_feature_branch() {
+  local rec id out status current feature_tip branch_head
+  id='pool-local-only-feature-checkout-r15'
+  rec=$(make_local_only_case local-only-feature-checkout "$id" main)
+  read_case_record "$rec"
+  git -C "$PROJECT_DIR" checkout --quiet -b fm/captain-feature
+  printf 'must not reach the fleet\n' > "$PROJECT_DIR/feature-only.txt"
+  git -C "$PROJECT_DIR" add feature-only.txt
+  git -C "$PROJECT_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' commit -qm feature-only
+  feature_tip=$(git -C "$PROJECT_DIR" rev-parse HEAD)
+  current=$(git -C "$PROJECT_DIR" rev-parse "refs/heads/$DEFAULT_BRANCH")
+  [ "$feature_tip" != "$current" ] || fail "fixture did not put the checkout ahead of $DEFAULT_BRANCH"
+
+  out=$(run_spawn "$id" --mode local-only --yolo off)
+  status=$?
+  expect_code 0 "$status" "spawn should refresh a remote-less pool while the checkout is on a feature branch"
+  assert_contains "$out" "spawned $id" "spawn did not report success with the checkout on a feature branch"
+  branch_head=$(git -C "$POOL_DIR" rev-parse HEAD)
+  [ "$branch_head" = "$current" ] || fail "spawn did not start at the local $DEFAULT_BRANCH tip"
+  [ "$branch_head" != "$feature_tip" ] || fail "spawn based the pool on the checkout's feature branch"
+  [ ! -e "$POOL_DIR/feature-only.txt" ] || fail "the refreshed pool carried the checkout's feature-branch content"
+  assert_grep 'must survive a newly spawned branch' "$POOL_DIR/advanced-local.txt" \
+    "the refreshed pool omitted content committed to the local default branch"
+  if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
+    printf '# observed feature-checkout spawn: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
+    printf '# observed base: HEAD=%s refs/heads/%s=%s feature=%s\n' \
+      "$branch_head" "$DEFAULT_BRANCH" "$current" "$feature_tip"
+  fi
+  pass "a remote-less project launches from the default branch even when the checkout is on a feature branch"
+}
+
+# Only a repository with no remote at all may launch from its local branch. One
+# whose remotes simply are not named origin still has somewhere newer to be and
+# keeps the origin rule, so it is refused exactly as before.
+test_non_origin_remote_still_refuses_without_origin() {
+  local rec id out status before
+  id='pool-upstream-only-r16'
+  rec=$(make_local_only_case upstream-only "$id" main)
+  read_case_record "$rec"
+  git clone --quiet --bare "$PROJECT_DIR" "$CASE_DIR/upstream.git"
+  git -C "$PROJECT_DIR" remote add upstream "file://$CASE_DIR/upstream.git"
+  before=$(git -C "$POOL_DIR" rev-parse HEAD)
+
+  out=$(run_spawn "$id" --mode local-only --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn succeeded from a local branch although the repository has a remote"
+  assert_contains "$out" "could not fetch origin" \
+    "spawn did not refuse a repository whose only remote is not origin"
+  assert_contains "$out" "refusing to launch from a potentially stale base" \
+    "the non-origin refusal dropped the stale-base guarantee"
+  assert_not_contains "$out" "spawned $id" "spawn reported success despite refusing"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$before" ] \
+    || fail "spawn moved HEAD while refusing a repository with only a non-origin remote"
+  if [ "${FM_TEST_EVIDENCE:-0}" = 1 ]; then
+    printf '# observed non-origin-remote refusal: %s\n' "$(printf '%s\n' "$out" | tail -n 1)"
+  fi
+  pass "a repository whose only remote is not origin is still refused without fetching"
 }
 
 # A slot left on a stale submodule pin is the field failure this diagnosis exists
@@ -569,6 +632,8 @@ test_unreachable_origin_refuses_stale_pool_base
 test_remote_less_pool_refreshes_to_local_default_tip
 test_remote_less_dirty_pool_refuses_without_discarding_work
 test_unresolved_local_default_refuses_pool
+test_remote_less_pool_follows_default_over_checked_out_feature_branch
+test_non_origin_remote_still_refuses_without_origin
 test_stale_submodule_pin_explains_itself
 test_unpushed_submodule_commit_is_still_uncommitted_work
 test_work_inside_submodule_is_still_uncommitted_work
