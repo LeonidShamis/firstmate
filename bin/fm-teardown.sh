@@ -45,10 +45,12 @@
 # rerun after a later failure (pane close, presentation cleanup) then skips every
 # worktree step instead of repeating it against whatever holds that path next, reaping
 # only the task's own temp root. A successful teardown removes the metadata, so the
-# field is only ever visible between a partial failure and its rerun; bin/fm-spawn.sh
-# drops it when it rebinds a worktree on relaunch. When the return succeeded but the
-# record could not be written, teardown fails loudly rather than leaving the two
-# records disagreeing silently.
+# field is only ever visible between a partial failure and its rerun, and
+# bin/fm-spawn.sh and bin/fm-control.sh refuse a relaunch while it is set, since the
+# task no longer holds that worktree. An Orca removal that fails is reported and
+# leaves the record unmarked, so a rerun retries the removal rather than skipping it.
+# When the return succeeded but the record could not be written, teardown fails
+# loudly rather than leaving the two records disagreeing silently.
 # local-only projects additionally accept work merged into the local default
 # branch (firstmate performs that merge after configured approval) as a fallback
 # for the common case where there is no remote at all.
@@ -2857,11 +2859,14 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
   fi
   [ -z "$T_ORCA" ] || fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
   if [ "$WORKTREE_STEPS" = 1 ]; then
-    fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID"
-    record_worktree_returned || {
-      echo "error: Orca worktree $WT was removed for $ID but that could not be recorded; reconcile the task record before rerunning teardown" >&2
-      exit 1
-    }
+    if fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID"; then
+      record_worktree_returned || {
+        echo "error: Orca worktree $WT was removed for $ID but that could not be recorded; reconcile the task record before rerunning teardown" >&2
+        exit 1
+      }
+    else
+      echo "warning: Orca worktree $WT (${ORCA_WORKTREE_ID:-no id}) was not removed for $ID; the task record keeps its worktree binding so a rerun retries the removal" >&2
+    fi
   fi
 elif [ "$WORKTREE_STEPS" = 1 ] && [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
   branch=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)

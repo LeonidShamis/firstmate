@@ -30,8 +30,11 @@
 #   ordinary relaunch. It refuses unless the recorded endpoint is positively
 #   agent-free on a backend with a recovery-grade agent-state classifier (tmux
 #   or herdr), refuses unless the endpoint's shell is sitting in the recorded
-#   worktree, and clears the previous harness's per-task wiring before arming
-#   the new incarnation.
+#   worktree, refuses while the record carries bin/fm-teardown.sh's
+#   worktree_returned=1 (that worktree was already handed back and may be
+#   another task's now; a rerun of teardown retires the task instead), and
+#   clears the previous harness's per-task wiring before arming the new
+#   incarnation.
 #   --harness <name> is the explicit per-spawn harness/profile adapter. The old
 #   positional harness arg still works for back-compat.
 #   --model <name> and --effort <low|medium|high|xhigh|max> are concrete profile
@@ -1047,6 +1050,14 @@ if [ "$RELAUNCH" -eq 1 ]; then
   RELAUNCH_WT=$(fm_meta_get "$RELAUNCH_META" worktree)
   [ -n "$RELAUNCH_WT" ] && [ -d "$RELAUNCH_WT" ] || {
     echo "error: task $ID's recorded worktree '${RELAUNCH_WT:-none}' is missing; refusing to relaunch without the local copy its work lives in" >&2
+    exit 1
+  }
+  # A worktree that an earlier teardown already returned or removed is no
+  # longer this task's, whatever the recorded path still says (bin/fm-teardown.sh
+  # owns that record). Adopting it would rebind this task to whichever task the
+  # pool handed the slot to next and overwrite that task's owner marker.
+  [ "$(fm_meta_get "$RELAUNCH_META" worktree_returned)" != 1 ] || {
+    echo "error: task $ID's recorded worktree $RELAUNCH_WT was already returned by an earlier teardown and may now belong to another task; refusing to relaunch into it (rerun bin/fm-teardown.sh $ID to finish retiring the task)" >&2
     exit 1
   }
   if [ "$KIND" = secondmate ]; then
@@ -2718,7 +2729,7 @@ fi
 preserve_relaunch_meta() {
   awk -F= '
     BEGIN {
-      split("window endpoint_task_id worktree worktree_returned project harness kind mode yolo tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
+      split("window endpoint_task_id worktree project harness kind mode yolo tasktmp model effort busy_gen spawn_gen traceparent backend herdr_session herdr_workspace_id herdr_tab_id herdr_pane_id zellij_session zellij_tab_id zellij_pane_id orca_worktree_id terminal cmux_workspace_id cmux_surface_id home projects control_relaunch_tx", keys, " ")
       for (i in keys) owned[keys[i]] = 1
     }
     !($1 in owned)
