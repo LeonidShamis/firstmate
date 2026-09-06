@@ -103,7 +103,7 @@ case "$REL" in *'//'*) die "delivered outbox path is malformed" ;; esac
 [ -f "$FM_HOME/.fm-secondmate-home" ] && [ ! -L "$FM_HOME/.fm-secondmate-home" ] \
   || die "FM_HOME is not a seeded secondmate home"
 [ -f "$FM_HOME/AGENTS.md" ] && [ -d "$FM_HOME/bin" ] || die "FM_HOME is not a Firstmate home"
-[ "$(fm_tasks_axi_storage_backend "$FM_HOME")" != beads ] \
+[ "$(fm_tasks_axi_backend_from_toml "$FM_HOME/.tasks.toml")" != beads ] \
   || die "backlog receive requires markdown backlog storage; this home's .tasks.toml selects beads (data/backlog.md is a mirror)"
 HOME_REAL=$(CDPATH='' cd -- "$FM_HOME" 2>/dev/null && pwd -P) || die "FM_HOME cannot be resolved"
 PARENT=$(dirname "$FM_HOME/$REL")

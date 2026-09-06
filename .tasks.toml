@@ -7,3 +7,4 @@ done_keep = 10
 
 [beads]
 dir = "data"
+path = "data/.beads"
