@@ -129,6 +129,10 @@ SH
 new_case() {
   local id=${2:-t1} dir="$TMP_ROOT/$1-$RANDOM"
   mkdir -p "$dir/home/state" "$dir/home/data" "$dir/fake"
+  # The relaunch cases that seed a backlog drive the real markdown flow, so the
+  # case home pins markdown storage rather than following the tracked default
+  # (tests/lib.sh).
+  fm_test_markdown_tasks_toml "$dir/home"
   : > "$dir/fake/literal"
   : > "$dir/fake/keys"
   printf 'claude' > "$dir/fake/command"
@@ -270,15 +274,20 @@ SH
 # Give a case home a real backlog carrying <id>, so the relaunch path's paired
 # backlog transition (bin/fm-backlog-transition-lib.sh) is live rather than
 # skipped for want of a backlog file.
+# These calls run from the case home so the installed tasks-axi resolves that
+# home's pinned .tasks.toml rather than the tracked config of whatever tree the
+# suite was launched from.
 seed_backlog() {  # <case-dir> <id> <queued|in_flight>
   local dir=$1 id=$2 want=$3 file="$1/home/data/backlog.md"
   printf '%s\n' '# Backlog' '' '## In flight' '' '## Queued' '' '## Done' > "$file"
-  tasks-axi add "$id" "relaunch fixture task" --kind ship --file "$file" >/dev/null
-  [ "$want" != in_flight ] || tasks-axi start "$id" --file "$file" >/dev/null
+  (cd "$dir/home" && tasks-axi add "$id" "relaunch fixture task" --kind ship \
+    --file "$file" >/dev/null)
+  [ "$want" != in_flight ] \
+    || (cd "$dir/home" && tasks-axi start "$id" --file "$file" >/dev/null)
 }
 
 backlog_state() {  # <case-dir> <id>
-  tasks-axi show "$2" --file "$1/home/data/backlog.md" 2>/dev/null |
+  (cd "$1/home" && tasks-axi show "$2" --file "$1/home/data/backlog.md" 2>/dev/null) |
     sed -n 's/^  state: *//p' | head -1
 }
 
