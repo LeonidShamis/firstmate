@@ -1,0 +1,19 @@
+Host-config hermeticity of tests/fm-bootstrap.test.sh.
+Most of its cases give their home no .tasks.toml, so fm_tasks_axi_backend falls through to
+$HOME/.tasks-axi/config.toml. Simulated hostile developer host:
+
+$ cat /tmp/fm-hostile-home/.tasks-axi/config.toml
+backend = "beads"
+
+[beads]
+dir = "data"
+path = "data/.beads"
+
+### BEFORE FIX (suite at f9064c5, HOME=/tmp/fm-hostile-home)
+$ HOME=/tmp/fm-hostile-home ./tests/fm-bootstrap.test.sh   -> exit 1
+not ok - treehouse --lease support is accepted silently: expected silence, got: MISSING: bd (install: npm install -g @beads/bd)
+
+### AFTER FIX (suite at HEAD, same hostile HOME)
+$ HOME=/tmp/fm-hostile-home ./tests/fm-bootstrap.test.sh   -> exit 0
+29 assertions passed, no failures; last one:
+ok - bootstrap validates crew-dispatch.json and reports malformed or unverified configs

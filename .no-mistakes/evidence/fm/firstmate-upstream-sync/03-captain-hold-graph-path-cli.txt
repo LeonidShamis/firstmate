@@ -1,0 +1,36 @@
+Operator transcript: bin/fm-captain-hold.sh verify on a home carrying this repository's tracked
+.tasks.toml verbatim, against a real bd 1.2.2 graph, for a decision key the graph does not carry.
+
+################ BEFORE FIX (tracked [beads] section carries only dir) ################
+$ cat $FM_HOME/.tasks.toml     # copied verbatim from the tracked repo file
+backend = "beads"
+
+[markdown]
+path = "data/backlog.md"
+archive = "data/done-archive.md"
+done_keep = 10
+
+[beads]
+dir = "data"
+
+$ bin/fm-captain-hold.sh verify tracked-config-scout
+fm-captain-hold: the beads backend carries no graph path in /tmp/fm-hold-demo.KQXoFA/home/.tasks.toml, so a migrated hold cannot be found
+  (exit 1)
+
+################ AFTER FIX (tracked [beads] section adds path = "data/.beads") ################
+$ cat $FM_HOME/.tasks.toml     # copied verbatim from the tracked repo file
+backend = "beads"
+
+[markdown]
+path = "data/backlog.md"
+archive = "data/done-archive.md"
+done_keep = 10
+
+[beads]
+dir = "data"
+path = "data/.beads"
+
+$ bin/fm-captain-hold.sh verify tracked-config-scout
+fm-captain-hold: no captain-held task absent-tracked-key and no migrated hold for it in this home's configured backlog (data directory /tmp/fm-hold-demo.AUJwJu/home/data); the nearest legacy identity tracked-config-scout-decision-absent-tracked-key also resolves to nothing
+  (exit 1)
+

@@ -1,0 +1,25 @@
+tests/fm-control-relaunch.test.sh - a fifth upstream suite that drives the real markdown backlog
+through the installed tasks-axi CLI and was still inheriting this fork's tracked beads config.
+Fixed here with the same pin the change already applies to four other suites.
+
+### BEFORE (HEAD as committed, run from the repo root whose .tasks.toml selects beads)
+$ ./tests/fm-control-relaunch.test.sh   -> exit 1 after 50 assertions
+not ok - a relaunch must not re-run a transition the row already reflects
+warning: /tmp/fm-control-relaunch.t5pnP6/reverify-16026/home/data/rl40/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+error: task rl40 has no backlog item in this home, so dispatching it would leave a worker no record owns; add it first (tasks-axi add rl40 '<title>' --kind ship) and re-run
+error: the replacement agent for rl40 could not be launched on claude
+error: rl40's agent was stopped but the replacement did not launch; no agent is running, and its work plus the recorded progress note are preserved at /tmp/fm-control-relaunch.t5pnP6/reverify-16026/wt: expected exit 0, got 1
+
+### Cause, isolated: same test, only TASKS_AXI_BACKEND=markdown added
+$ TASKS_AXI_BACKEND=markdown <same single test>
+ok - relaunch re-reads the backlog item instead of blindly re-running the transition
+
+### AFTER (case home pinned with fm_test_markdown_tasks_toml, suite's own tasks-axi calls run from it)
+$ ./tests/fm-control-relaunch.test.sh   -> exit 0, 54 assertions
+ok - relaunch re-reads the backlog item instead of blindly re-running the transition
+ok - relaunch heals an item that drifted out of In flight while the task stayed live
+ok - fm-spawn --relaunch: refuses to adopt a worktree an earlier teardown already returned
+ok - fm-control relaunch: a returned worktree refuses before the agent is touched
+
+Upstream baseline (git archive af8c4b6, markdown .tasks.toml) for comparison: exit 0, 52 assertions.
+54 - 52 = the two local relaunch/marker tests from df933e8.

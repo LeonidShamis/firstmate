@@ -1,0 +1,23 @@
+Merge shape: git must know upstream/main is an ancestor, and all three local commits must survive.
+
+$ git merge-base --is-ancestor af8c4b6 HEAD; echo $?
+0 (0 = upstream/main af8c4b6 IS an ancestor of HEAD)
+
+$ git log -1 --format='%h %p %s' ebafb88
+ebafb88  parents: df933e8 af8c4b6
+  Merge upstream/main into the fork, preserving the three local features
+
+$ git rev-list --count f66be0f..af8c4b6   # upstream commits merged in
+67
+
+The three local feature commits, each still reachable from HEAD:
+  reachable c03bfbe feat: adopt beads backlog storage through tasks-axi
+  reachable d2ccd7b fix(bin): launch remote-less projects from their local default branch (#1)
+  reachable df933e8 fix(bin): refuse teardown of a worktree reassigned to another task (#2)
+
+$ git log --oneline --first-parent df933e8..HEAD
+db78839 no-mistakes(review): fix beads storage gates and tracked graph path
+f9064c5 test: make the markdown-pin helper own its rule instead of a suite list
+8bc450c test: pin seeded secondmate homes to markdown backlog storage
+45b8f4e test: keep upstream's markdown backlog suites off this fork's beads storage
+ebafb88 Merge upstream/main into the fork, preserving the three local features

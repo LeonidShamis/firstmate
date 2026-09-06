@@ -1,0 +1,16 @@
+$ bash tests/fm-backlog-beads-storage-guard.test.sh   # with the guard fix reverted
+not ok - the markdown refusal must name the storage requirement (got: handed off 1 item(s) to design: guarded-item
+  into <tmp>/local-markdown-sub/data/backlog.md
+error: handed off work to secondmate design, but no live receiver endpoint is recorded; the destination backlog is durable and the receiver was not woken) (missing: 'requires markdown backlog storage')
+--- output ---
+handed off 1 item(s) to design: guarded-item
+  into <tmp>/local-markdown-sub/data/backlog.md
+error: handed off work to secondmate design, but no live receiver endpoint is recorded; the destination backlog is durable and the receiver was not woken
+[exit 1]
+
+$ bash tests/fm-backlog-beads-storage-guard.test.sh   # on the change as committed
+ok - local handoff refuses beads storage whatever TASKS_AXI_BACKEND says
+ok - remote outbox staging refuses beads storage whatever TASKS_AXI_BACKEND says
+ok - receive refuses beads storage whatever TASKS_AXI_BACKEND says
+ok - a declared markdown home is unaffected by an ambient beads override
+[exit 0]

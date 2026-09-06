@@ -1,0 +1,61 @@
+Operator transcript: secondmate backlog handoff on a home whose own .tasks.toml declares beads,
+run from a shell that exports TASKS_AXI_BACKEND=markdown (the value every mover pins on its own
+tasks-axi calls). The gate must answer on the home's declared storage, not the environment.
+
+################ BEFORE FIX (guard reads fm_tasks_axi_backend, which honours the environment) ################
+$ cat captain/.tasks.toml
+backend = "beads"
+
+[beads]
+dir = "data"
+path = "data/.beads"
+$ export TASKS_AXI_BACKEND=markdown        # operator's ambient shell
+$ bin/fm-backlog-handoff.sh design guarded-item
+handed off 1 item(s) to design: guarded-item
+  into /tmp/fm-guard-demo.EUrFtl/design-mate/data/backlog.md
+error: handed off work to secondmate design, but no live receiver endpoint is recorded; the destination backlog is durable and the receiver was not woken
+  (exit 1)
+
+$ cat captain/data/backlog.md      # the beads mirror
+## In flight
+
+## Queued
+## Done
+$ cat design-mate/data/backlog.md  # the secondmate's backlog
+## In flight
+
+## Queued
+- [ ] guarded-item - routed nowhere (repo: alpha)
+
+## Done
+
+>>> RESULT: the item WAS MOVED OUT of the beads mirror into the secondmate. Mirror and beads database now diverge.
+
+################ AFTER FIX (guard reads fm_tasks_axi_backend_from_toml on the home's own file) ################
+$ cat captain/.tasks.toml
+backend = "beads"
+
+[beads]
+dir = "data"
+path = "data/.beads"
+$ export TASKS_AXI_BACKEND=markdown        # operator's ambient shell
+$ bin/fm-backlog-handoff.sh design guarded-item
+error: secondmate backlog handoff requires markdown backlog storage; this home's .tasks.toml selects beads (data/backlog.md is a mirror). Keep handoff homes on backend = "markdown".
+  (exit 1)
+
+$ cat captain/data/backlog.md      # the beads mirror
+## In flight
+
+## Queued
+- [ ] guarded-item - routed nowhere (repo: alpha)
+
+## Done
+$ cat design-mate/data/backlog.md  # the secondmate's backlog
+## In flight
+
+## Queued
+
+## Done
+
+>>> RESULT: the move was refused; the item is still in the beads mirror and the secondmate backlog is untouched.
+

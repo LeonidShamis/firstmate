@@ -1,0 +1,51 @@
+Targeted suite results on the merged tree (host umask pinned to 077 so the process-event
+private-directory check can pass; the host's default 0002 fails it identically on the
+upstream baseline).
+
+SUITE                                      FORK (HEAD)                  UPSTREAM BASELINE af8c4b6
+tests/fm-backlog-beads-storage-guard       exit 0, 4 assertions (new)   n/a - new local suite
+tests/fm-captain-hold-lifecycle            exit 0, 32 assertions        not run (fork-only case added)
+tests/fm-control-relaunch                  exit 0, 54 assertions        exit 0, 52 assertions
+tests/fm-spawn-pool-base-freshen           exit 0, 16 assertions        not run
+tests/fm-teardown                          exit 1, 73 ok, 1 host fail   exit 1, 70 ok, SAME host fail
+tests/fm-backlog-atomicity                 exit 0, 80 assertions        not run
+tests/fm-bootstrap                         exit 0, 29 assertions        not run
+tests/fm-public-followup                   exit 1, 73 ok, 0 assert fail fixture rm cleanup only
+
+fm-teardown: the single failure on both trees is 'leaked-process-reap: leaked worktree process
+survived teardown'. lsof is not installed on this host and bin/fm-teardown.sh resolves worktree-
+rooted processes with 'lsof -a -d cwd'. The three fork-only assertions are exactly the local
+worktree-ownership feature from df933e8:
+  ok - an ordinary teardown still reaps and returns the worktree that is its own
+  ok - a rerun after a post-return failure refuses loudly instead of tearing down a reassigned worktree
+  ok - a rerun after the records are reconciled completes without repeating the worktree steps
+
+fm-public-followup: 73 assertions pass and zero fail; the run exits 1 only on the fixture
+teardown's "rm: cannot remove ...: Directory not empty", matching the author's own report.
+
+Nine further suites that call the real tasks-axi CLI without pinning a .tasks.toml were swept
+for the same beads-inheritance hazard; all nine pass on the merged tree:
+  tests/fm-cd-pretool-check.test.sh exit=0
+  tests/fm-secondmate-liveness.test.sh exit=0
+  tests/fm-on.test.sh exit=0
+  tests/fm-startup-memory-budget.test.sh exit=0
+  tests/fm-shared-captain-inheritance.test.sh exit=0
+  tests/fm-remote-doctor.test.sh exit=0
+  tests/fm-secondmate-sync.test.sh exit=0
+  tests/fm-secondmate-harness.test.sh exit=0
+  tests/fm-session-start.test.sh exit=0
+  FM_TEST_SUMMARY total=9 failed=0 skipped_gate=0 duration_ms=323926
+
+Re-run independently on the final tree (HEAD = 1706a0e), same host, same results:
+  tests/fm-backlog-beads-storage-guard  exit 0, 4 assertions
+  tests/fm-backlog-handoff              exit 0, 25 assertions
+  tests/fm-remote-backlog-handoff       exit 0, 12 assertions
+  tests/fm-control-relaunch             exit 0, 54 assertions
+  tests/fm-backlog-atomicity            exit 0, 80 assertions
+  tests/fm-bootstrap                    exit 0, 29 assertions
+  tests/fm-captain-hold-lifecycle       exit 0, 32 assertions (umask 077)
+  tests/fm-public-followup              exit 1, 73 ok / 0 assertion failures (fixture rm cleanup only)
+  tests/fm-spawn-pool-base-freshen      exit 0, 22 "ok -" lines
+  tests/fm-teardown                     exit 1, 73 ok / 1 failure: leaked-process-reap
+`command -v lsof` on this host returns nothing, which is the documented cause of that
+single teardown failure and reproduces identically on the upstream baseline.
